@@ -1,0 +1,20 @@
+{
+  "$schema": "https://raw.githubusercontent.com/jetify-com/devbox/0.16.0/.schema/devbox.schema.json",
+  "packages": [
+    "rustup@latest",
+    "libiconv@latest"
+  ],
+  "env": {
+    "ROOT_DIR": "$PWD"
+  },
+  "shell": {
+    "init_hook": [
+      "rustupHomeDir=\"$ROOT_DIR/.devbox/rust\"",
+      "mkdir -p $rustupHomeDir",
+      "export RUSTUP_HOME=$rustupHomeDir",
+      "export LIBRARY_PATH=$LIBRARY_PATH:\"$ROOT_DIR/.devbox/nix/profile/default/lib\"",
+      "rustup default stable",
+      "cargo fetch"
+    ]
+  }
+}
