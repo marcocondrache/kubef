@@ -1,10 +1,10 @@
-use k8s_openapi::api::core::v1::Pod;
-use kube::{Api, Client};
+use miette::Result;
 
+mod cli;
 mod cnf;
+mod fwd;
 
 #[tokio::main]
-async fn main() {
-    let client = Client::try_default().await.unwrap();
-    let pods: Api<Pod> = Api::default_namespaced(client);
+async fn main() -> Result<()> {
+    cli::init().await
 }

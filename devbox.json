@@ -5,7 +5,8 @@
     "libiconv@latest"
   ],
   "env": {
-    "ROOT_DIR": "$PWD"
+    "ROOT_DIR": "$PWD",
+    "KUBECONFIG": "$PWD/../hive/kubeconfig"
   },
   "shell": {
     "init_hook": [
