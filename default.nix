@@ -9,20 +9,20 @@
 
 rustPlatform.buildRustPackage rec {
   pname = "kubef";
-  version = "3.0.32";
+  version = "0.1.0";
 
   src = fetchFromGitHub {
     owner = "marcocondrache";
     repo = pname;
-    rev = "v${version}";
-    sha256 = "sha256-pLVR/vD7wMH/8UziWe5nwL/fBrexg1BtiJouRb73L4E=";
+    tag = "v${version}";
+    sha256 = "sha256-8OEyOZbJCzgFJit+A7Q/m8ewGhIz0PZA1fWTH41a44E=";
   };
 
   nativeBuildInputs = [ installShellFiles ];
 
   buildInputs = lib.optionals stdenv.hostPlatform.isDarwin [ libiconv ];
 
-  cargoHash = "sha256-Nonid/5Jh0WIQV0G3fpmkW0bql6bvlcNJBMZ+6MTTPQ=";
+  cargoHash = "sha256-WjK0nBfP26b8JDRhBWyE0nsXBajez0MpU6N5l5fZZkM=";
 
   meta = with lib; {
     description = "A tool to help managing kubernetes forwarders";
