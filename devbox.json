@@ -6,7 +6,8 @@
   ],
   "env": {
     "ROOT_DIR": "$PWD",
-    "KUBECONFIG": "$PWD/../hive/kubeconfig"
+    "KUBECONFIG": "$PWD/../hive/kubeconfig",
+    "KUBEF_CONFIG_PATH": "$PWD/kubef.json"
   },
   "shell": {
     "init_hook": [

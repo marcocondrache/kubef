@@ -1,5 +1,6 @@
+use std::process::ExitCode;
+
 use clap::{Parser, Subcommand};
-use miette::Result;
 
 mod forward;
 
@@ -19,17 +20,23 @@ enum Commands {
     Forward(forward::ForwardCommandArguments),
 }
 
-pub async fn init() -> Result<()> {
+pub async fn init() -> ExitCode {
     let args = Cli::parse();
 
-    match args.command {
+    let output = match args.command {
         Some(Commands::Forward(args)) => forward::init(args).await,
         None => {
             if let Some(target) = args.target {
                 forward::init(forward::ForwardCommandArguments { target }).await
             } else {
-                Err(miette::Report::msg("No target specified"))
+                Err(anyhow::anyhow!("No target specified"))
             }
         }
+    };
+
+    if let Err(_e) = output {
+        ExitCode::FAILURE
+    } else {
+        ExitCode::SUCCESS
     }
 }

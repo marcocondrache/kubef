@@ -1,58 +1,46 @@
-use std::{collections::HashMap, net::SocketAddr};
+use std::sync::Arc;
 
-use futures::StreamExt;
-use k8s_openapi::api::core::v1::Pod;
-use kube::{Api, ResourceExt};
-use miette::{Context, IntoDiagnostic, Result};
-use tokio::net::TcpListener;
-use tokio_stream::wrappers::TcpListenerStream;
+use anyhow::Result;
+use kube::Client;
+use tokio::task::JoinSet;
 
+mod forwarder;
+mod forwarding_request;
+mod listener;
 mod watcher;
 
-use crate::{cnf, fwd::watcher::PodWatcher};
+use crate::{cnf, fwd::forwarding_request::ForwardingRequest};
 
 pub async fn init(target: String) -> Result<()> {
     let config = cnf::extract()?;
 
-    let mut groups: HashMap<String, Vec<&cnf::Resource>> = HashMap::new();
-    for resource in &config.resources {
-        if let Some(g) = &resource.group {
-            groups
-                .entry(g.clone())
-                .or_insert_with(Vec::new)
-                .push(resource);
-        }
+    let resources = config
+        .resources
+        .into_iter()
+        .filter(|r| r.group.as_deref() == Some(&target))
+        .collect::<Vec<_>>();
+
+    if resources.is_empty() {
+        return Err(anyhow::anyhow!("No resources found"));
     }
 
-    let group = groups.get(&target).unwrap().first().unwrap();
+    let client = Arc::new(Client::try_default().await?);
 
-    let client = kube::Client::try_default().await.into_diagnostic()?;
-    let api: Api<Pod> = Api::namespaced(client.clone(), group.namespace.as_ref());
+    let mut set = JoinSet::new();
+    let requests = resources
+        .into_iter()
+        .map(|r| ForwardingRequest::new(client.clone(), r))
+        .collect::<Vec<_>>();
 
-    let watcher = PodWatcher::new(client, group).await;
+    for mut request in requests {
+        request.init(&mut set).await;
+    }
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], group.ports.local));
-    let server = TcpListener::bind(addr).await.into_diagnostic()?;
-    let mut stream = TcpListenerStream::new(server);
-
-    while let Some(Ok(mut connection)) = stream.next().await {
-        let pod = watcher.get_pod().await;
-
-        if let Some(pod) = pod {
-            let ports = [group.ports.remote];
-            let name = pod.name_any();
-            let mut forwarder = api.portforward(name.as_str(), &ports).await.unwrap();
-            let mut upstream = forwarder
-                .take_stream(ports[0])
-                .context("failed to take stream")?;
-
-            tokio::io::copy_bidirectional(&mut connection, &mut upstream)
-                .await
-                .into_diagnostic()?;
-
-            drop(upstream);
-
-            forwarder.join().await.into_diagnostic()?;
+    tokio::select! {
+        biased;
+        _ = tokio::signal::ctrl_c() => {},
+        _ = set.join_all() => {
+            return Err(anyhow::anyhow!("Failed to join all requests"));
         }
     }
 

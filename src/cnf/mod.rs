@@ -1,8 +1,10 @@
+use std::env;
+
+use anyhow::Result;
 use figment::{
     Figment,
     providers::{Format, Json},
 };
-use miette::{IntoDiagnostic, Result};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
@@ -10,18 +12,17 @@ pub struct Config {
     pub resources: Vec<Resource>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Resource {
     pub name: String,
     pub namespace: Namespace,
     pub kind: ResourceKind,
-    pub label: String,
+    pub alias: String,
     pub group: Option<String>,
     pub ports: Ports,
-    pub loopback: bool,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Ports {
     pub remote: u16,
     pub local: u16,
@@ -42,7 +43,7 @@ impl AsRef<str> for Namespace {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "lowercase")]
 pub enum ResourceKind {
     Service,
@@ -50,10 +51,17 @@ pub enum ResourceKind {
 }
 
 pub fn extract() -> Result<Config> {
+    let xdg = xdg::BaseDirectories::with_prefix("kubef");
+
+    let path = match env::var("KUBEF_CONFIG_PATH") {
+        Ok(val) => std::path::PathBuf::from(val),
+        Err(_) => xdg
+            .place_config_file("config.json")
+            .expect("Failed to create default config file"),
+    };
+
     Figment::new()
-        .merge(Json::file(
-            "/Users/marcocondrache/Personal/kubef/config.json",
-        ))
+        .merge(Json::file(&path))
         .extract()
-        .into_diagnostic()
+        .map_err(|e| anyhow::anyhow!("Failed to parse config: {}", e))
 }

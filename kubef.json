@@ -4,7 +4,7 @@
             "name": "pdf",
             "namespace": "default",
             "kind": "service",
-            "label": "pdf",
+            "alias": "pdf",
             "group": "pdf",
             "ports": {
                 "remote": 8080,
