@@ -1,17 +1,20 @@
-use std::{net::SocketAddr, time::Duration};
+use std::net::SocketAddr;
 
 use crate::cnf::{self, Resource};
 use anyhow::Result;
-use futures::{StreamExt, TryStreamExt};
+use futures::{StreamExt, TryStreamExt, future};
 use k8s_openapi::api::core::v1::Pod;
-use kube::{Api, Client, ResourceExt};
+use kube::{
+    Api, Client, ResourceExt,
+    core::{Expression, Selector},
+};
 use tokio::{
     net::{TcpListener, TcpStream},
     task::JoinSet,
 };
 use tokio_stream::wrappers::TcpListenerStream;
 use tokio_util::sync::CancellationToken;
-use tracing::{info, instrument};
+use tracing::{error, info, instrument};
 
 mod watcher;
 
@@ -54,27 +57,40 @@ pub async fn bind(resource: Resource, client: Client, token: CancellationToken) 
     let server = TcpListener::bind(addr).await?;
 
     let api: Api<Pod> = Api::namespaced(client.clone(), resource.namespace.as_ref());
-    let watcher = watcher::PodWatcher::new(client, &resource).await;
+    let mut selector = Selector::default();
 
-    tokio::time::sleep(Duration::from_secs(3)).await;
+    selector.extend(Expression::In(
+        "app.kubernetes.io/name".into(),
+        [resource.name].into(),
+    ));
 
-    let pod = watcher
-        .get_pod()
-        .await
-        .ok_or(anyhow::anyhow!("Pod not found"))?;
+    let watcher = watcher::PodWatcher::new(
+        client,
+        resource.namespace.as_ref().to_string(),
+        selector,
+        token.child_token(),
+    )
+    .await;
 
     TcpListenerStream::new(server)
         .take_until(token.cancelled())
         .try_for_each(|connection| {
+            let state = watcher.store.state();
+            let pod = state.first().unwrap();
+
             let api = api.clone();
             let pod_name = pod.name_any();
             let pod_port = resource.ports.remote;
-            let token = token.child_token();
+            let forward_token = token.child_token();
 
             async move {
-                info!("Forwarding to {}", pod_name);
+                info!(
+                    "Forwarding connection from {} to {}",
+                    connection.peer_addr()?,
+                    pod_name
+                );
 
-                tokio::spawn(forward(api, pod_port, pod_name, connection, token));
+                tokio::spawn(forward(api, pod_port, pod_name, connection, forward_token));
 
                 Ok(())
             }
@@ -92,6 +108,10 @@ pub async fn forward(
     mut connection: TcpStream,
     token: CancellationToken,
 ) -> Result<()> {
+    // Optimization
+    connection.set_nodelay(true)?;
+    connection.set_linger(None)?;
+
     let ports = [pod_port];
     let mut forwarding = api.portforward(&pod_name, &ports).await?;
     let mut upstream = forwarding
@@ -101,7 +121,9 @@ pub async fn forward(
     tokio::select! {
         biased;
         _ = token.cancelled() => {}
-        _ = tokio::io::copy_bidirectional(&mut connection, &mut upstream) => {}
+        Err(e) = tokio::io::copy_bidirectional(&mut connection, &mut upstream) => {
+            error!("Error forwarding: {}", e);
+        }
     };
 
     drop(upstream);

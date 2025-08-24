@@ -1,79 +1,49 @@
-use std::sync::Arc;
-
-use futures::StreamExt;
+use futures::{StreamExt, future::ready};
 use k8s_openapi::api::core::v1::Pod;
 use kube::{
-    Api, Client,
-    runtime::{WatchStreamExt, watcher},
+    Api, Client, ResourceExt,
+    core::Selector,
+    runtime::{
+        WatchStreamExt,
+        reflector::{self, Store},
+        watcher,
+    },
 };
-use tokio::{pin, sync::RwLock, task::JoinHandle};
-
-use crate::cnf;
+use tokio_util::sync::CancellationToken;
 
 pub struct PodWatcher {
-    current_pod: Arc<RwLock<Option<Pod>>>,
-    pub handle: JoinHandle<()>,
-}
-
-impl Drop for PodWatcher {
-    fn drop(&mut self) {
-        self.handle.abort();
-    }
+    pub store: Store<Pod>,
 }
 
 impl PodWatcher {
-    pub async fn get_pod(&self) -> Option<Pod> {
-        let read = self.current_pod.read().await;
-        read.clone()
-    }
+    pub async fn new(
+        client: Client,
+        namespace: String,
+        selector: Selector,
+        token: CancellationToken,
+    ) -> Self {
+        let api: Api<Pod> = Api::namespaced(client, namespace.as_ref());
+        let config = watcher::Config::default().labels_from(&selector);
 
-    pub async fn new(client: Client, resource: &cnf::Resource) -> Self {
-        // TODO: wrong, find more generic way to select the pod
-        let selectors = [format!("app.kubernetes.io/name={}", resource.name)];
+        let (store, writer) = reflector::store();
 
-        let api: Api<Pod> = Api::namespaced(client, resource.namespace.as_ref());
-        let config = watcher::Config::default().labels(&selectors[0]);
-
-        let stream = watcher::watcher(api, config)
-            .default_backoff()
-            .applied_objects();
-
-        let current_pod = Arc::new(RwLock::new(None));
-        let current_pod_clone = current_pod.clone();
-        let stream_handle = tokio::spawn(async move {
-            pin!(stream);
-
-            while let Some(Ok(pod)) = stream.next().await {
-                if Self::is_pod_ready(&pod) {
-                    let mut write = current_pod_clone.write().await;
-                    *write = Some(pod);
-                }
-            }
+        tokio::spawn(async move {
+            watcher::watcher(api, config)
+                .default_backoff()
+                .modify(|pod| {
+                    pod.managed_fields_mut().clear();
+                    pod.annotations_mut().clear();
+                    pod.finalizers_mut().clear();
+                })
+                .reflect(writer)
+                .applied_objects()
+                .take_until(token.cancelled())
+                .for_each(|_| ready(()))
+                .await
         });
 
-        Self {
-            current_pod,
-            handle: stream_handle,
-        }
-    }
-}
+        let _ = store.wait_until_ready().await;
 
-impl PodWatcher {
-    fn is_pod_ready(pod: &Pod) -> bool {
-        pod.status
-            .as_ref()
-            .map(|status| {
-                status.phase == Some("Running".to_string())
-                    && status
-                        .conditions
-                        .as_ref()
-                        .map(|conditions| {
-                            conditions
-                                .iter()
-                                .any(|condition| condition.type_ == "Ready")
-                        })
-                        .unwrap_or(false)
-            })
-            .unwrap_or(false)
+        Self { store }
     }
 }

@@ -46,6 +46,7 @@ pub async fn init() -> ExitCode {
     };
 
     if let Err(_e) = output {
+        eprintln!("Error: {}", _e);
         ExitCode::FAILURE
     } else {
         ExitCode::SUCCESS
