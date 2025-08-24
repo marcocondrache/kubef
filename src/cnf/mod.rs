@@ -1,4 +1,4 @@
-use std::{collections::HashMap, env};
+use std::env;
 
 use anyhow::Result;
 use figment::{
@@ -6,52 +6,9 @@ use figment::{
     providers::{Format, YamlExtended},
 };
 
-use serde::{Deserialize, Serialize};
+pub mod schema;
 
-#[derive(Serialize, Deserialize)]
-pub struct Config {
-    pub groups: HashMap<String, Vec<Resource>>,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct Resource {
-    pub namespace: Namespace,
-    pub selector: ResourceSelector,
-    pub alias: String,
-    pub ports: Ports,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct Ports {
-    pub remote: u16,
-    pub local: u16,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Namespace(pub Option<String>);
-
-impl Default for Namespace {
-    fn default() -> Self {
-        Self(Some("default".to_string()))
-    }
-}
-
-impl AsRef<str> for Namespace {
-    fn as_ref(&self) -> &str {
-        self.0.as_ref().map_or("default", |s| s.as_str())
-    }
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
-#[serde(rename_all = "lowercase")]
-#[serde(tag = "type", content = "match")]
-pub enum ResourceSelector {
-    Label(Vec<(String, String)>),
-    Deployment(String),
-    Service(String),
-}
-
-pub fn extract() -> Result<Config> {
+pub fn extract() -> Result<schema::Config> {
     let xdg = xdg::BaseDirectories::with_prefix("kubef");
 
     let path = match env::var("KUBEF_CONFIG") {

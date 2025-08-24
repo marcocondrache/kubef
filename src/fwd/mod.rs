@@ -1,7 +1,10 @@
 use std::{collections::HashMap, net::SocketAddr};
 
 use crate::{
-    cnf::{self, Resource, ResourceSelector},
+    cnf::{
+        self,
+        schema::{Resource, ResourceSelector},
+    },
     env::MAX_CONCURRENT_CONNECTIONS,
 };
 use anyhow::{Context, Result};
@@ -190,7 +193,7 @@ pub async fn select(
     }
 }
 
-fn find_resources(config: &mut cnf::Config, target: &str) -> Result<Vec<Resource>> {
+fn find_resources(config: &mut cnf::schema::Config, target: &str) -> Result<Vec<Resource>> {
     let alias_index: HashMap<String, Vec<Resource>> = config
         .groups
         .values()

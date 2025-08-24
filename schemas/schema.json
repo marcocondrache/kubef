@@ -1,0 +1,136 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Config",
+  "type": "object",
+  "properties": {
+    "groups": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/Resource"
+        }
+      }
+    }
+  },
+  "required": [
+    "groups"
+  ],
+  "$defs": {
+    "Namespace": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "Ports": {
+      "type": "object",
+      "properties": {
+        "local": {
+          "type": "integer",
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0
+        },
+        "remote": {
+          "type": "integer",
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0
+        }
+      },
+      "required": [
+        "remote",
+        "local"
+      ]
+    },
+    "Resource": {
+      "type": "object",
+      "properties": {
+        "alias": {
+          "type": "string"
+        },
+        "namespace": {
+          "$ref": "#/$defs/Namespace"
+        },
+        "ports": {
+          "$ref": "#/$defs/Ports"
+        },
+        "selector": {
+          "$ref": "#/$defs/ResourceSelector"
+        }
+      },
+      "required": [
+        "namespace",
+        "selector",
+        "alias",
+        "ports"
+      ]
+    },
+    "ResourceSelector": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "match": {
+              "type": "array",
+              "items": {
+                "type": "array",
+                "maxItems": 2,
+                "minItems": 2,
+                "prefixItems": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "string"
+                  }
+                ]
+              }
+            },
+            "type": {
+              "type": "string",
+              "const": "label"
+            }
+          },
+          "required": [
+            "type",
+            "match"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "match": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "const": "deployment"
+            }
+          },
+          "required": [
+            "type",
+            "match"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "match": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "const": "service"
+            }
+          },
+          "required": [
+            "type",
+            "match"
+          ]
+        }
+      ]
+    }
+  }
+}
