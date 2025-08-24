@@ -27,3 +27,19 @@ args = [
     "-D",
     "warnings",
 ]
+
+[tasks.ci-clippy-release]
+category = "CI - CHECK"
+command = "cargo"
+args = [
+    "clippy",
+    "--workspace",
+    "--all-targets",
+    "--release",
+    "--tests",
+    "--benches",
+    "--bins",
+    "--",
+    "-D",
+    "warnings",
+]
