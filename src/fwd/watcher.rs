@@ -8,6 +8,7 @@ use futures::{StreamExt, future::ready};
 use k8s_openapi::api::core::v1::Pod;
 use kube::{
     Api, Client, ResourceExt,
+    api::PartialObjectMeta,
     core::Selector,
     runtime::{
         WatchStreamExt,
@@ -19,8 +20,8 @@ use tokio_util::sync::CancellationToken;
 
 #[derive(Clone)]
 pub struct PodWatcher {
-    store: Store<Pod>,
-    subscriber: ReflectHandle<Pod>,
+    store: Store<PartialObjectMeta<Pod>>,
+    subscriber: ReflectHandle<PartialObjectMeta<Pod>>,
     counter: Arc<AtomicUsize>,
 }
 
@@ -39,7 +40,7 @@ impl PodWatcher {
         let subscriber = writer.subscribe().context("Failed to create subscriber")?;
 
         tokio::spawn(async move {
-            watcher::watcher(api, config)
+            watcher::metadata_watcher(api, config)
                 .default_backoff()
                 .modify(|pod| {
                     pod.managed_fields_mut().clear();
@@ -62,7 +63,7 @@ impl PodWatcher {
         })
     }
 
-    pub async fn next(&self) -> Result<Arc<Pod>> {
+    pub async fn next(&self) -> Result<Arc<PartialObjectMeta<Pod>>> {
         let state = self.store.state();
         let mut subscriber = self.subscriber.clone();
 
