@@ -9,13 +9,13 @@
 
 rustPlatform.buildRustPackage rec {
   pname = "kubef";
-  version = "0.2.0";
+  version = "1.0.0";
 
   src = fetchFromGitHub {
     owner = "marcocondrache";
     repo = pname;
     tag = "v${version}";
-    sha256 = "sha256-dOJu5lS6+u9v0tJpDWTYX2BBg9F3WbTNuXG7r7aTcfs=";
+    sha256 = "sha256-sgcDGx9sP33VwUC5ojj7/0Nn0cdWaNh2yCriGg6qhbI=";
   };
 
   nativeBuildInputs = [ installShellFiles ];
