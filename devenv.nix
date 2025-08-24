@@ -7,8 +7,8 @@
 }:
 {
   env = {
-    KUBECONFIG = "${config.env.DEVENV_ROOT}/../hive/kubeconfig";
-    KUBEF_CONFIG_PATH = "${config.env.DEVENV_ROOT}/kubef.yaml";
+    KUBECONFIG = "${config.env.DEVENV_ROOT}/../../Work/kubeconfig";
+    KUBEF_CONFIG = "${config.env.DEVENV_ROOT}/kubef.yaml";
   };
 
   languages.rust.enable = true;
