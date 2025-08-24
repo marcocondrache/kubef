@@ -36,6 +36,8 @@ pub async fn init(target: String) -> Result<()> {
     let mut set = JoinSet::new();
 
     for resource in resources {
+        info!("Starting to forward to resource: {}", resource.alias);
+
         set.spawn(bind(resource, client.clone(), token.child_token()));
     }
 

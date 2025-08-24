@@ -12,6 +12,7 @@ use kube::{
         watcher,
     },
 };
+use rand::seq::IndexedRandom;
 use tokio_util::sync::CancellationToken;
 
 #[derive(Clone)]
@@ -59,7 +60,7 @@ impl PodWatcher {
         let mut subscriber = self.subscriber.clone();
 
         if !state.is_empty() {
-            return Ok(state.first().unwrap().clone());
+            return Ok(state.choose(&mut rand::rng()).unwrap().clone());
         }
 
         subscriber.next().await.context("Cannot get next pod")

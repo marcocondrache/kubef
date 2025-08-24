@@ -1,13 +1,17 @@
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
-use tracing::level_filters::LevelFilter;
+use tracing::{error, level_filters::LevelFilter};
 use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
+
+use crate::env::{LOGO, PKG_NAME, PKG_RELEASE};
 
 mod forward;
 
 #[derive(Parser)]
-#[command(name = "kubef", bin_name = "kubef")]
+#[command(name = PKG_NAME, bin_name = "kubef")]
+#[command(version = PKG_RELEASE, before_help = LOGO)]
+#[command(disable_version_flag = false, arg_required_else_help = true)]
 struct Cli {
     #[arg(value_name = "RESOURCE", help = "Resource to process")]
     target: Option<String>,
@@ -45,8 +49,9 @@ pub async fn init() -> ExitCode {
         }
     };
 
-    if let Err(_e) = output {
-        eprintln!("Error: {}", _e);
+    if let Err(e) = output {
+        error!("{}", e);
+
         ExitCode::FAILURE
     } else {
         ExitCode::SUCCESS
