@@ -13,10 +13,11 @@ use kube::{
     runtime::{
         WatchStreamExt,
         reflector::{self, ReflectHandle, Store},
-        watcher,
+        watcher::{self},
     },
 };
 use tokio_util::sync::CancellationToken;
+use tracing::info;
 
 #[derive(Clone)]
 pub struct PodWatcher {
@@ -75,6 +76,8 @@ impl PodWatcher {
                 .context("Cannot get next load balanced pod")?
                 .clone());
         }
+
+        info!("No pods found, waiting for next one");
 
         subscriber.next().await.context("Cannot get next pod")
     }

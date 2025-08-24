@@ -1,6 +1,9 @@
 use std::{collections::HashMap, net::SocketAddr};
 
-use crate::cnf::{self, Resource, ResourceSelector};
+use crate::{
+    cnf::{self, Resource, ResourceSelector},
+    env::MAX_CONCURRENT_CONNECTIONS,
+};
 use anyhow::{Context, Result};
 use futures::{StreamExt, TryStreamExt};
 use k8s_openapi::api::{
@@ -81,7 +84,7 @@ pub async fn bind(resource: Resource, client: Client, token: CancellationToken) 
 
     TcpListenerStream::new(server)
         .take_until(token.cancelled())
-        .try_for_each(|connection| {
+        .try_for_each_concurrent(MAX_CONCURRENT_CONNECTIONS, |connection| {
             let api = api.clone();
             let next_pod = watcher.next();
             let forward_token = token.child_token();
@@ -118,7 +121,7 @@ pub async fn forward(
     // Optimization
     connection.set_nodelay(true)?;
     connection.set_linger(None)?;
-    connection.set_ttl(64)?;
+    connection.set_ttl(128)?;
 
     let ports = [pod_port];
     let mut forwarding = api.portforward(&pod_name, &ports).await?;
