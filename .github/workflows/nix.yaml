@@ -22,9 +22,5 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
       - uses: cachix/install-nix-action@8887e596b4ee1134dae06b98d573bd674693f47c
-      - uses: cachix/cachix-action@18cf96c7c98e048e10a83abd92116114cd8504be
-        with:
-          name: kubef
-          extraPullNames: nix-community
       - run: nix build
       - run: ./result/bin/kubef help
