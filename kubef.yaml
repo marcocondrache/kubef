@@ -1,3 +1,5 @@
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/marcocondrache/kubef/refs/heads/main/schemas/schema.json
 groups:
     test:
         - alias: pdf

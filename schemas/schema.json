@@ -13,6 +13,7 @@
       }
     }
   },
+  "additionalProperties": false,
   "required": [
     "groups"
   ],
@@ -39,6 +40,7 @@
           "minimum": 0
         }
       },
+      "additionalProperties": false,
       "required": [
         "remote",
         "local"
@@ -60,6 +62,7 @@
           "$ref": "#/$defs/ResourceSelector"
         }
       },
+      "additionalProperties": false,
       "required": [
         "namespace",
         "selector",
@@ -93,6 +96,7 @@
               "const": "label"
             }
           },
+          "additionalProperties": false,
           "required": [
             "type",
             "match"
@@ -109,6 +113,7 @@
               "const": "deployment"
             }
           },
+          "additionalProperties": false,
           "required": [
             "type",
             "match"
@@ -125,6 +130,7 @@
               "const": "service"
             }
           },
+          "additionalProperties": false,
           "required": [
             "type",
             "match"

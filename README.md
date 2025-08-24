@@ -20,7 +20,7 @@ A fast, intelligent Kubernetes port forwarding tool with configuration-based res
 - Rust 2024 edition or later
 - Access to a Kubernetes cluster with `kubectl` configured
 
-### From Source
+### From source
 
 ```bash
 git clone <repository-url>
@@ -34,7 +34,7 @@ The binary will be available at `target/release/kubef`.
 
 `kubef` uses YAML configuration files to define forwarding rules. By default, it looks for configuration in:
 
-- `$KUBEF_CONFIG_PATH` (if set)
+- `$KUBEF_CONFIG` (if set)
 - `~/.config/kubef/config.json` (XDG config directory)
 
 ### Configuration Format
@@ -52,13 +52,13 @@ groups:
         local: <local_port>
 ```
 
-### Selector Types
+### Selector types
 
 - **service** - Select pods via Kubernetes service selector
 - **deployment** - Select pods managed by a specific deployment
 - **label** - Select pods using label key-value pairs
 
-### Example Configuration
+### Example configuration
 
 ```yaml
 groups:
@@ -94,7 +94,7 @@ groups:
 
 ## Usage
 
-### Basic Usage
+### Basic usage
 
 Forward to a specific resource by alias:
 ```bash
@@ -113,23 +113,23 @@ kubef web
 
 ### How It Works
 
-1. **Configuration Loading** - `kubef` loads your configuration file and parses the resource definitions
-2. **Resource Resolution** - Based on your target (alias or group), it identifies which resources to forward
-3. **Pod Discovery** - For each resource, it uses the configured selector to find matching pods in the cluster
-4. **Port Binding** - Creates local TCP listeners on the specified local ports
-5. **Connection Forwarding** - When a connection arrives, it selects an available pod and establishes a port-forward tunnel
-6. **Real-time Updates** - Continuously watches for pod changes and updates the available target pool
+1. **Configuration oading** - `kubef` loads your configuration file and parses the resource definitions
+2. **Resource resolution** - Based on your target (alias or group), it identifies which resources to forward
+3. **Pod discovery** - For each resource, it uses the configured selector to find matching pods in the cluster
+4. **Port binding** - Creates local TCP listeners on the specified local ports
+5. **Connection forwarding** - When a connection arrives, it selects an available pod and establishes a port-forward tunnel
+6. **Real-time updates** - Continuously watches for pod changes and updates the available target pool
 
 ### Advanced Features
 
-- **Load Balancing** - Automatically distributes connections across healthy pods
-- **Fault Tolerance** - Handles pod restarts and failures gracefully
-- **Signal Handling** - Clean shutdown on Ctrl+C
-- **Structured Logging** - Detailed logging with configurable levels via `RUST_LOG` environment variable
+- **Load balancing** - Automatically distributes connections across healthy pods
+- **Fault tolerance** - Handles pod restarts and failures gracefully
+- **Signal handling** - Clean shutdown on Ctrl+C
+- **Structured Logging** - Detailed logging with configurable levels via `KUBEF_LOG` environment variable
 
 ## Examples
 
-### Simple Service Forwarding
+### Simple service forwarding
 
 ```yaml
 groups:
@@ -148,7 +148,7 @@ kubef webapp
 # Access your webapp at http://localhost:8080
 ```
 
-### Multi-Environment Setup
+### Multi-Environment setup
 
 ```yaml
 groups:
@@ -181,7 +181,7 @@ kubef staging
 kubef api  # Will forward all 'api' aliases
 ```
 
-### Label-based Selection
+### Label-based selection
 
 ```yaml
 groups:
@@ -200,7 +200,7 @@ groups:
 ## Environment Variables
 
 - `KUBEF_CONFIG_PATH` - Custom path to configuration file
-- `RUST_LOG` - Set logging level (e.g., `RUST_LOG=debug kubef webapp`)
+- `KUBEF_LOG` - Set logging level (e.g., `KUBEF_LOG=debug kubef webapp`)
 
 ## Development
 
@@ -250,7 +250,7 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 Enable debug logging to see detailed information:
 
 ```bash
-RUST_LOG=debug kubef webapp
+KUBEF_LOG=debug kubef webapp
 ```
 
 This will show configuration loading, pod discovery, and connection forwarding details.
