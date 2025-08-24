@@ -1,25 +1,16 @@
 {
     "resources": [
         {
-            "name": "pdf",
             "namespace": "default",
-            "kind": "service",
             "alias": "pdf",
             "group": "test",
+            "selector": {
+                "type": "service",
+                "match": "pdf"
+            },
             "ports": {
                 "remote": 8080,
                 "local": 9000
-            }
-        },
-        {
-            "name": "radarr",
-            "namespace": "default",
-            "kind": "service",
-            "alias": "radarr",
-            "group": "test",
-            "ports": {
-                "remote": 80,
-                "local": 9001
             }
         }
     ]

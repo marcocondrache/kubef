@@ -5,6 +5,7 @@ use figment::{
     Figment,
     providers::{Format, Json},
 };
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
@@ -14,9 +15,8 @@ pub struct Config {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Resource {
-    pub name: String,
     pub namespace: Namespace,
-    pub kind: ResourceKind,
+    pub selector: ResourceSelector,
     pub alias: String,
     pub group: Option<String>,
     pub ports: Ports,
@@ -45,9 +45,11 @@ impl AsRef<str> for Namespace {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "lowercase")]
-pub enum ResourceKind {
-    Service,
-    Pod,
+#[serde(tag = "type", content = "match")]
+pub enum ResourceSelector {
+    Label(Vec<(String, String)>),
+    Deployment(String),
+    Service(String),
 }
 
 pub fn extract() -> Result<Config> {

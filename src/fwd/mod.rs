@@ -1,9 +1,12 @@
 use std::net::SocketAddr;
 
-use crate::cnf::{self, Resource};
+use crate::cnf::{self, Resource, ResourceSelector};
 use anyhow::{Context, Result};
 use futures::{StreamExt, TryStreamExt};
-use k8s_openapi::api::core::v1::Pod;
+use k8s_openapi::api::{
+    apps::v1::Deployment,
+    core::v1::{Pod, Service},
+};
 use kube::{
     Api, Client, ResourceExt,
     core::{Expression, Selector},
@@ -57,18 +60,18 @@ pub async fn init(target: String) -> Result<()> {
     Ok(())
 }
 
-#[instrument(skip(client, token), fields(resource = %resource.name))]
+#[instrument(skip(client, token), fields(resource = %resource.alias))]
 pub async fn bind(resource: Resource, client: Client, token: CancellationToken) -> Result<()> {
     let addr = SocketAddr::from(([127, 0, 0, 1], resource.ports.local));
     let server = TcpListener::bind(addr).await?;
 
     let api: Api<Pod> = Api::namespaced(client.clone(), resource.namespace.as_ref());
-    let mut selector = Selector::default();
-
-    selector.extend(Expression::In(
-        "app.kubernetes.io/name".into(),
-        [resource.name].into(),
-    ));
+    let selector = select(
+        resource.selector,
+        client.clone(),
+        resource.namespace.as_ref().to_string(),
+    )
+    .await?;
 
     let watcher = watcher::PodWatcher::new(
         client,
@@ -137,4 +140,49 @@ pub async fn forward(
     forwarding.join().await?;
 
     Ok(())
+}
+
+pub async fn select(
+    selector: ResourceSelector,
+    client: Client,
+    namespace: String,
+) -> Result<Selector> {
+    match selector {
+        ResourceSelector::Label(labels) => {
+            let mut selector = Selector::default();
+
+            selector.extend(
+                labels
+                    .into_iter()
+                    .map(|(k, v)| Expression::In(k, [v].into())),
+            );
+
+            Ok(selector)
+        }
+        ResourceSelector::Deployment(name) => {
+            let api: Api<Deployment> = Api::namespaced(client, &namespace);
+            let deployment = api.get(&name).await?;
+            let selector = deployment.spec.context("Deployment has no spec")?.selector;
+            let expressions = selector
+                .match_expressions
+                .context("Deployment has no selector")?
+                .into_iter()
+                .map(|e| Expression::try_from(e).map_err(anyhow::Error::from))
+                .collect::<Result<Vec<_>>>()?;
+
+            Ok(Selector::from_iter(expressions))
+        }
+        ResourceSelector::Service(name) => {
+            let api: Api<Service> = Api::namespaced(client, &namespace);
+            let service = api.get(&name).await?;
+            let selector = service.spec.context("Service has no spec")?.selector;
+            let expressions = selector
+                .context("Service has no selector")?
+                .into_iter()
+                .map(|(k, v)| Expression::In(k, [v].into()))
+                .collect::<Vec<_>>();
+
+            Ok(Selector::from_iter(expressions))
+        }
+    }
 }
