@@ -1,0 +1,10 @@
+groups:
+    test:
+        - alias: pdf
+          namespace: default
+          selector:
+              type: service
+              match: pdf
+          ports:
+              remote: 8080
+              local: 9000

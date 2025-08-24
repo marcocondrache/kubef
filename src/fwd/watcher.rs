@@ -49,7 +49,7 @@ impl PodWatcher {
                 .await
         });
 
-        let _ = store.wait_until_ready().await;
+        store.wait_until_ready().await?;
 
         Ok(Self { store, subscriber })
     }

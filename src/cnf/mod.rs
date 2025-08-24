@@ -1,16 +1,16 @@
-use std::env;
+use std::{collections::BTreeMap, env};
 
 use anyhow::Result;
 use figment::{
     Figment,
-    providers::{Format, Json},
+    providers::{Format, YamlExtended},
 };
 
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
 pub struct Config {
-    pub resources: Vec<Resource>,
+    pub groups: BTreeMap<String, Vec<Resource>>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -18,7 +18,6 @@ pub struct Resource {
     pub namespace: Namespace,
     pub selector: ResourceSelector,
     pub alias: String,
-    pub group: Option<String>,
     pub ports: Ports,
 }
 
@@ -63,7 +62,7 @@ pub fn extract() -> Result<Config> {
     };
 
     Figment::new()
-        .merge(Json::file(&path))
+        .merge(YamlExtended::file(&path))
         .extract()
         .map_err(|e| anyhow::anyhow!("Failed to parse config: {}", e))
 }

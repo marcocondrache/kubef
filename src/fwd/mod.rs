@@ -1,4 +1,4 @@
-use std::net::SocketAddr;
+use std::{collections::HashMap, net::SocketAddr};
 
 use crate::cnf::{self, Resource, ResourceSelector};
 use anyhow::{Context, Result};
@@ -22,13 +22,9 @@ use tracing::{error, info, instrument};
 mod watcher;
 
 pub async fn init(target: String) -> Result<()> {
-    let config = cnf::extract()?;
+    let mut config = cnf::extract()?;
 
-    let resources = config
-        .resources
-        .into_iter()
-        .filter(|r| r.group.as_deref() == Some(&target))
-        .collect::<Vec<_>>();
+    let resources = find_resources(&mut config, &target)?;
 
     if resources.is_empty() {
         return Err(anyhow::anyhow!("No resources found"));
@@ -184,5 +180,30 @@ pub async fn select(
 
             Ok(Selector::from_iter(expressions))
         }
+    }
+}
+
+fn find_resources(config: &mut cnf::Config, target: &str) -> Result<Vec<Resource>> {
+    let alias_index: HashMap<String, Vec<Resource>> = config
+        .groups
+        .values()
+        .flat_map(|resources| resources.iter())
+        .fold(HashMap::new(), |mut acc, resource| {
+            acc.entry(resource.alias.clone())
+                .or_default()
+                .push(resource.clone());
+            acc
+        });
+
+    if let Some(resources) = alias_index.get(target) {
+        return Ok(resources.clone());
+    }
+
+    match config.groups.remove(target) {
+        Some(resources) => Ok(resources),
+        None => Err(anyhow::anyhow!(
+            "No resources found for target '{}' in aliases or groups",
+            target
+        )),
     }
 }
