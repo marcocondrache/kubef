@@ -11,5 +11,9 @@
     KUBEF_CONFIG = "${config.env.DEVENV_ROOT}/../../Work/kubef.yaml";
   };
 
+  packages = [
+    pkgs.cargo-make
+  ];
+
   languages.rust.enable = true;
 }

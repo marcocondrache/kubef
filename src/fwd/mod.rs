@@ -23,7 +23,7 @@ use tokio::{
 };
 use tokio_stream::wrappers::TcpListenerStream;
 use tokio_util::sync::CancellationToken;
-use tracing::{error, info, instrument};
+use tracing::{debug, error, info, instrument};
 
 mod watcher;
 
@@ -71,7 +71,7 @@ pub async fn bind(resource: Resource, client: Client, token: CancellationToken) 
 
     let api: Api<Pod> = Api::namespaced(client.clone(), resource.namespace.as_ref());
     let selector = select(
-        resource.selector,
+        &resource.selector,
         client.clone(),
         resource.namespace.as_ref().to_string(),
     )
@@ -126,15 +126,19 @@ pub async fn forward(
     connection.set_linger(None)?;
     connection.set_ttl(128)?;
 
+    debug!("Opening upstream connection to {}", pod_name);
+
     let ports = [pod_port];
     let mut forwarding = api.portforward(&pod_name, &ports).await?;
     let mut upstream = forwarding
         .take_stream(pod_port)
         .context("Failed to take stream")?;
 
+    debug!("Upstream connection opened");
+
     tokio::select! {
         biased;
-        _ = token.cancelled() => {}
+        () = token.cancelled() => {}
         Err(e) = tokio::io::copy_bidirectional(&mut connection, &mut upstream) => {
             error!("Error forwarding: {}", e);
         }
@@ -148,7 +152,7 @@ pub async fn forward(
 }
 
 pub async fn select(
-    selector: ResourceSelector,
+    selector: &ResourceSelector,
     client: Client,
     namespace: String,
 ) -> Result<Selector> {
@@ -158,15 +162,15 @@ pub async fn select(
 
             selector.extend(
                 labels
-                    .into_iter()
-                    .map(|(k, v)| Expression::In(k, [v].into())),
+                    .iter()
+                    .map(|(k, v)| Expression::In(k.to_owned(), [v.to_owned()].into())),
             );
 
             Ok(selector)
         }
         ResourceSelector::Deployment(name) => {
             let api: Api<Deployment> = Api::namespaced(client, &namespace);
-            let deployment = api.get(&name).await?;
+            let deployment = api.get(name).await?;
             let selector = deployment.spec.context("Deployment has no spec")?.selector;
             // TODO: Handle match expressions
             let expressions = selector
@@ -180,7 +184,7 @@ pub async fn select(
         }
         ResourceSelector::Service(name) => {
             let api: Api<Service> = Api::namespaced(client, &namespace);
-            let service = api.get(&name).await?;
+            let service = api.get(name).await?;
             let selector = service.spec.context("Service has no spec")?.selector;
             let expressions = selector
                 .context("Service has no selector")?

@@ -7,7 +7,7 @@ use anyhow::{Context, Result};
 use futures::{StreamExt, future::ready};
 use k8s_openapi::api::core::v1::Pod;
 use kube::{
-    Api, Client, ResourceExt,
+    Api, Client,
     api::PartialObjectMeta,
     core::Selector,
     runtime::{
@@ -43,16 +43,11 @@ impl PodWatcher {
         tokio::spawn(async move {
             watcher::metadata_watcher(api, config)
                 .default_backoff()
-                .modify(|pod| {
-                    pod.managed_fields_mut().clear();
-                    pod.annotations_mut().clear();
-                    pod.finalizers_mut().clear();
-                })
                 .reflect(writer)
                 .applied_objects()
                 .take_until(token.cancelled())
                 .for_each(|_| ready(()))
-                .await
+                .await;
         });
 
         store.wait_until_ready().await?;
@@ -65,10 +60,8 @@ impl PodWatcher {
     }
 
     pub async fn next(&self) -> Result<Arc<PartialObjectMeta<Pod>>> {
-        let state = self.store.state();
-        let mut subscriber = self.subscriber.clone();
-
-        if !state.is_empty() {
+        if !self.store.is_empty() {
+            let state = self.store.state();
             let index = self.counter.fetch_add(1, Ordering::Relaxed) % state.len();
 
             return Ok(state
@@ -79,6 +72,10 @@ impl PodWatcher {
 
         info!("No pods found, waiting for next one");
 
-        subscriber.next().await.context("Cannot get next pod")
+        self.subscriber
+            .clone()
+            .next()
+            .await
+            .context("Cannot get next pod")
     }
 }
