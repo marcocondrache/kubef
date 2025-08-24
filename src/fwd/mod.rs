@@ -36,8 +36,6 @@ pub async fn init(target: String) -> Result<()> {
     let mut set = JoinSet::new();
 
     for resource in resources {
-        info!("Starting to forward to resource: {}", resource.alias);
-
         set.spawn(bind(resource, client.clone(), token.child_token()));
     }
 
@@ -63,6 +61,8 @@ pub async fn bind(resource: Resource, client: Client, token: CancellationToken) 
     let addr = SocketAddr::from(([127, 0, 0, 1], resource.ports.local));
     let server = TcpListener::bind(addr).await?;
 
+    info!("Listening TCP on {} forwarded to {}", addr, resource.alias);
+
     let api: Api<Pod> = Api::namespaced(client.clone(), resource.namespace.as_ref());
     let selector = select(
         resource.selector,
@@ -83,7 +83,7 @@ pub async fn bind(resource: Resource, client: Client, token: CancellationToken) 
         .take_until(token.cancelled())
         .try_for_each(|connection| {
             let api = api.clone();
-            let next_pod = watcher.wait_pod();
+            let next_pod = watcher.next();
             let forward_token = token.child_token();
 
             async move {
@@ -118,6 +118,7 @@ pub async fn forward(
     // Optimization
     connection.set_nodelay(true)?;
     connection.set_linger(None)?;
+    connection.set_ttl(64)?;
 
     let ports = [pod_port];
     let mut forwarding = api.portforward(&pod_name, &ports).await?;

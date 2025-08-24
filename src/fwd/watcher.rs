@@ -1,4 +1,7 @@
-use std::sync::Arc;
+use std::sync::{
+    Arc,
+    atomic::{AtomicUsize, Ordering},
+};
 
 use anyhow::{Context, Result};
 use futures::{StreamExt, future::ready};
@@ -12,13 +15,13 @@ use kube::{
         watcher,
     },
 };
-use rand::seq::IndexedRandom;
 use tokio_util::sync::CancellationToken;
 
 #[derive(Clone)]
 pub struct PodWatcher {
     store: Store<Pod>,
     subscriber: ReflectHandle<Pod>,
+    counter: Arc<AtomicUsize>,
 }
 
 impl PodWatcher {
@@ -52,15 +55,25 @@ impl PodWatcher {
 
         store.wait_until_ready().await?;
 
-        Ok(Self { store, subscriber })
+        Ok(Self {
+            store,
+            subscriber,
+            counter: Arc::new(AtomicUsize::new(0)),
+        })
     }
 
-    pub async fn wait_pod(&self) -> Result<Arc<Pod>> {
+    pub async fn next(&self) -> Result<Arc<Pod>> {
         let state = self.store.state();
         let mut subscriber = self.subscriber.clone();
 
         if !state.is_empty() {
-            return Ok(state.choose(&mut rand::rng()).unwrap().clone());
+            let index = self.counter.fetch_add(1, Ordering::Relaxed) % state.len();
+
+            return Ok(state
+                .iter()
+                .nth(index)
+                .context("Cannot get next load balanced pod")?
+                .clone());
         }
 
         subscriber.next().await.context("Cannot get next pod")

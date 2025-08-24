@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, env};
+use std::{collections::HashMap, env};
 
 use anyhow::Result;
 use figment::{
@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
 pub struct Config {
-    pub groups: BTreeMap<String, Vec<Resource>>,
+    pub groups: HashMap<String, Vec<Resource>>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
