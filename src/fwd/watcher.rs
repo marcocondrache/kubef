@@ -71,8 +71,7 @@ impl PodWatcher {
             let index = self.counter.fetch_add(1, Ordering::Relaxed) % state.len();
 
             return Ok(state
-                .iter()
-                .nth(index)
+                .get(index)
                 .context("Cannot get next load balanced pod")?
                 .clone());
         }
