@@ -1,0 +1,29 @@
+[tasks.ci-format]
+category = "CI - CHECK"
+command = "cargo"
+args = ["fmt", "--all", "--check"]
+
+[tasks.ci-check]
+category = "CI - CHECK"
+command = "cargo"
+args = ["check", "--locked", "--workspace", "--all-targets"]
+
+[tasks.ci-check-release]
+category = "CI - CHECK"
+command = "cargo"
+args = ["check", "--release", "--locked", "--workspace", "--all-targets"]
+
+[tasks.ci-clippy]
+category = "CI - CHECK"
+command = "cargo"
+args = [
+    "clippy",
+    "--workspace",
+    "--all-targets",
+    "--tests",
+    "--benches",
+    "--bins",
+    "--",
+    "-D",
+    "warnings",
+]
