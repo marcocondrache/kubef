@@ -54,7 +54,7 @@ pub enum ResourceSelector {
 pub fn extract() -> Result<Config> {
     let xdg = xdg::BaseDirectories::with_prefix("kubef");
 
-    let path = match env::var("KUBEF_CONFIG_PATH") {
+    let path = match env::var("KUBEF_CONFIG") {
         Ok(val) => std::path::PathBuf::from(val),
         Err(_) => xdg
             .place_config_file("config.json")

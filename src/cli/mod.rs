@@ -29,6 +29,7 @@ enum Commands {
 pub async fn init() -> ExitCode {
     let env = EnvFilter::builder()
         .with_default_directive(LevelFilter::INFO.into())
+        .with_env_var("KUBEF_LOG")
         .from_env_lossy();
 
     tracing_subscriber::registry()
