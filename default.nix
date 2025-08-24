@@ -1,32 +1,28 @@
 {
   rustPlatform,
-  fetchFromGitHub,
   installShellFiles,
   stdenv,
   libiconv,
   lib,
 }:
-
+let
+  manifest = lib.importTOML ./Cargo.toml;
+in
 rustPlatform.buildRustPackage rec {
-  pname = "kubef";
-  version = "1.1.1";
+  pname = manifest.package.name;
+  version = manifest.package.version;
 
-  src = fetchFromGitHub {
-    owner = "marcocondrache";
-    repo = pname;
-    tag = "v${version}";
-    sha256 = "sha256-QQIrDtTvMzMYSzwmNKwK+NltImfB0PvRM+M7VjSaKbQ=";
-  };
+  src = lib.cleanSource ./.;
 
   nativeBuildInputs = [ installShellFiles ];
 
   buildInputs = lib.optionals stdenv.hostPlatform.isDarwin [ libiconv ];
 
-  cargoHash = "sha256-WjK0nBfP26b8JDRhBWyE0nsXBajez0MpU6N5l5fZZkM=";
+  cargoHash = "sha256-TW9ZBeq+gq0c/iBht3/nDalLOdepbUUJflDTOpc9FaU=";
 
   meta = with lib; {
     description = "A tool to help managing kubernetes forwarders";
-    mainProgram = "kubef";
+    mainProgram = manifest.package.name;
     longDescription = ''
       Kubef is a tool to help managing kubernetes forwarders.
     '';
