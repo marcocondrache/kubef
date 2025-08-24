@@ -12,7 +12,7 @@ pub struct Config {
     pub resources: Vec<Resource>,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Resource {
     pub name: String,
     pub namespace: Namespace,
@@ -22,7 +22,7 @@ pub struct Resource {
     pub ports: Ports,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Ports {
     pub remote: u16,
     pub local: u16,
@@ -43,7 +43,7 @@ impl AsRef<str> for Namespace {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "lowercase")]
 pub enum ResourceKind {
     Service,

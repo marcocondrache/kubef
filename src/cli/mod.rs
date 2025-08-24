@@ -1,6 +1,8 @@
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
+use tracing::level_filters::LevelFilter;
+use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
 mod forward;
 
@@ -21,6 +23,15 @@ enum Commands {
 }
 
 pub async fn init() -> ExitCode {
+    let env = EnvFilter::builder()
+        .with_default_directive(LevelFilter::INFO.into())
+        .from_env_lossy();
+
+    tracing_subscriber::registry()
+        .with(fmt::layer())
+        .with(env)
+        .init();
+
     let args = Cli::parse();
 
     let output = match args.command {

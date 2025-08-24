@@ -5,12 +5,22 @@
             "namespace": "default",
             "kind": "service",
             "alias": "pdf",
-            "group": "pdf",
+            "group": "test",
             "ports": {
                 "remote": 8080,
                 "local": 9000
-            },
-            "loopback": true
+            }
+        },
+        {
+            "name": "radarr",
+            "namespace": "default",
+            "kind": "service",
+            "alias": "radarr",
+            "group": "test",
+            "ports": {
+                "remote": 80,
+                "local": 9001
+            }
         }
     ]
 }
