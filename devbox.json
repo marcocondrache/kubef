@@ -2,11 +2,12 @@
   "$schema": "https://raw.githubusercontent.com/jetify-com/devbox/0.16.0/.schema/devbox.schema.json",
   "packages": [
     "rustup@latest",
-    "libiconv@latest"
+    "libiconv@latest",
+    "cargo-make@latest"
   ],
   "env": {
-    "ROOT_DIR": "$PWD",
-    "KUBECONFIG": "$PWD/../hive/kubeconfig",
+    "ROOT_DIR":          "$PWD",
+    "KUBECONFIG":        "$PWD/../hive/kubeconfig",
     "KUBEF_CONFIG_PATH": "$PWD/kubef.json"
   },
   "shell": {

@@ -15,6 +15,12 @@ pub struct PodWatcher {
     pub handle: JoinHandle<()>,
 }
 
+impl Drop for PodWatcher {
+    fn drop(&mut self) {
+        self.handle.abort();
+    }
+}
+
 impl PodWatcher {
     pub async fn get_pod(&self) -> Option<Pod> {
         let read = self.current_pod.read().await;
