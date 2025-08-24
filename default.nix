@@ -15,7 +15,7 @@ rustPlatform.buildRustPackage rec {
     owner = "marcocondrache";
     repo = pname;
     tag = "v${version}";
-    sha256 = "sha256-o7dUUtUlVmJOZLBhOE/2PCflLMD4TC3Qg8TkS10WTQA=";
+    sha256 = "sha256-UBsOsynqRhPldA8UZ1Uiz7rDPVD2PAAYFXsXpU4iBWk=";
   };
 
   nativeBuildInputs = [ installShellFiles ];
