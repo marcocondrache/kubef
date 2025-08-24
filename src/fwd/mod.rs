@@ -161,12 +161,13 @@ pub async fn select(
             let api: Api<Deployment> = Api::namespaced(client, &namespace);
             let deployment = api.get(&name).await?;
             let selector = deployment.spec.context("Deployment has no spec")?.selector;
+            // TODO: Handle match expressions
             let expressions = selector
-                .match_expressions
+                .match_labels
                 .context("Deployment has no selector")?
                 .into_iter()
-                .map(|e| Expression::try_from(e).map_err(anyhow::Error::from))
-                .collect::<Result<Vec<_>>>()?;
+                .map(|(k, v)| Expression::In(k, [v].into()))
+                .collect::<Vec<_>>();
 
             Ok(Selector::from_iter(expressions))
         }
