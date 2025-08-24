@@ -66,21 +66,15 @@ pub async fn bind(resource: Resource, client: Client, token: CancellationToken) 
     TcpListenerStream::new(server)
         .take_until(token.cancelled())
         .try_for_each(|connection| {
-            let resource = resource.clone();
             let api = api.clone();
-            let pod = pod.clone();
-            let token = token.clone();
+            let pod_name = pod.name_any();
+            let pod_port = resource.ports.remote;
+            let token = token.child_token();
 
             async move {
-                info!("Forwarding to {}", pod.name_any());
+                info!("Forwarding to {}", pod_name);
 
-                tokio::spawn(forward(
-                    resource.clone(),
-                    api,
-                    pod,
-                    connection,
-                    token.child_token(),
-                ));
+                tokio::spawn(forward(api, pod_port, pod_name, connection, token));
 
                 Ok(())
             }
@@ -90,19 +84,18 @@ pub async fn bind(resource: Resource, client: Client, token: CancellationToken) 
     Ok(())
 }
 
-#[instrument(skip(api, connection, token), fields(resource = %resource.name, pod = %pod.name_any()))]
+#[instrument(skip(api, connection, token), fields(pod = %pod_name))]
 pub async fn forward(
-    resource: Resource,
     api: Api<Pod>,
-    pod: Pod,
+    pod_port: u16,
+    pod_name: String,
     mut connection: TcpStream,
     token: CancellationToken,
 ) -> Result<()> {
-    let name = pod.name_any();
-    let ports = [resource.ports.remote];
-    let mut forwarding = api.portforward(&name, &ports).await?;
+    let ports = [pod_port];
+    let mut forwarding = api.portforward(&pod_name, &ports).await?;
     let mut upstream = forwarding
-        .take_stream(resource.ports.remote)
+        .take_stream(pod_port)
         .ok_or(anyhow::anyhow!("Failed to take stream"))?;
 
     tokio::select! {
