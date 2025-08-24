@@ -1,8 +1,8 @@
 use std::net::SocketAddr;
 
 use crate::cnf::{self, Resource};
-use anyhow::Result;
-use futures::{StreamExt, TryStreamExt, future};
+use anyhow::{Context, Result};
+use futures::{StreamExt, TryStreamExt};
 use k8s_openapi::api::core::v1::Pod;
 use kube::{
     Api, Client, ResourceExt,
@@ -43,7 +43,13 @@ pub async fn init(target: String) -> Result<()> {
     tokio::select! {
         biased;
         _ = tokio::signal::ctrl_c() => {},
-        _ = set.join_all() => {}
+        results = set.join_all() => {
+            for result in results {
+                if let Err(e) = result {
+                    error!("Error: {}", e);
+                }
+            }
+        }
     };
 
     token.cancel();
@@ -70,20 +76,20 @@ pub async fn bind(resource: Resource, client: Client, token: CancellationToken) 
         selector,
         token.child_token(),
     )
-    .await;
+    .await?;
 
     TcpListenerStream::new(server)
         .take_until(token.cancelled())
         .try_for_each(|connection| {
-            let state = watcher.store.state();
-            let pod = state.first().unwrap();
-
             let api = api.clone();
-            let pod_name = pod.name_any();
-            let pod_port = resource.ports.remote;
+            let next_pod = watcher.wait_pod();
             let forward_token = token.child_token();
 
             async move {
+                let pod = next_pod.await.unwrap();
+                let pod_name = pod.name_any();
+                let pod_port = resource.ports.remote;
+
                 info!(
                     "Forwarding connection from {} to {}",
                     connection.peer_addr()?,
@@ -116,7 +122,7 @@ pub async fn forward(
     let mut forwarding = api.portforward(&pod_name, &ports).await?;
     let mut upstream = forwarding
         .take_stream(pod_port)
-        .ok_or(anyhow::anyhow!("Failed to take stream"))?;
+        .context("Failed to take stream")?;
 
     tokio::select! {
         biased;

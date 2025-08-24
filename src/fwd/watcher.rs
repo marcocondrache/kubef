@@ -1,3 +1,6 @@
+use std::sync::Arc;
+
+use anyhow::{Context, Result};
 use futures::{StreamExt, future::ready};
 use k8s_openapi::api::core::v1::Pod;
 use kube::{
@@ -5,14 +8,16 @@ use kube::{
     core::Selector,
     runtime::{
         WatchStreamExt,
-        reflector::{self, Store},
+        reflector::{self, ReflectHandle, Store},
         watcher,
     },
 };
 use tokio_util::sync::CancellationToken;
 
+#[derive(Clone)]
 pub struct PodWatcher {
-    pub store: Store<Pod>,
+    store: Store<Pod>,
+    subscriber: ReflectHandle<Pod>,
 }
 
 impl PodWatcher {
@@ -21,11 +26,13 @@ impl PodWatcher {
         namespace: String,
         selector: Selector,
         token: CancellationToken,
-    ) -> Self {
+    ) -> Result<Self> {
         let api: Api<Pod> = Api::namespaced(client, namespace.as_ref());
         let config = watcher::Config::default().labels_from(&selector);
 
-        let (store, writer) = reflector::store();
+        let (store, writer) = reflector::store_shared(256);
+
+        let subscriber = writer.subscribe().context("Failed to create subscriber")?;
 
         tokio::spawn(async move {
             watcher::watcher(api, config)
@@ -44,6 +51,17 @@ impl PodWatcher {
 
         let _ = store.wait_until_ready().await;
 
-        Self { store }
+        Ok(Self { store, subscriber })
+    }
+
+    pub async fn wait_pod(&self) -> Result<Arc<Pod>> {
+        let state = self.store.state();
+        let mut subscriber = self.subscriber.clone();
+
+        if !state.is_empty() {
+            return Ok(state.first().unwrap().clone());
+        }
+
+        subscriber.next().await.context("Cannot get next pod")
     }
 }
