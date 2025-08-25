@@ -43,7 +43,11 @@ pub async fn init() -> ExitCode {
         Some(Commands::Forward(args)) => forward::init(args).await,
         None => {
             if let Some(target) = args.target {
-                forward::init(forward::ForwardCommandArguments { target }).await
+                forward::init(forward::ForwardCommandArguments {
+                    target,
+                    context: None,
+                })
+                .await
             } else {
                 Err(anyhow::anyhow!("No target specified"))
             }

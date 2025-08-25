@@ -3,6 +3,7 @@ use std::net::{Ipv4Addr, SocketAddr};
 use crate::{
     cnf::schema::{Resource, ResourceSelector},
     env::MAX_CONCURRENT_CONNECTIONS,
+    fwd::pool::ClientPool,
 };
 use anyhow::{Context, Result};
 use futures::{StreamExt, TryStreamExt};
@@ -22,20 +23,26 @@ use tokio_stream::wrappers::TcpListenerStream;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, instrument};
 
+mod pool;
 mod watcher;
 
-pub async fn init(resources: Vec<Resource>) -> Result<()> {
+pub async fn init(resources: Vec<Resource>, context: Option<String>) -> Result<()> {
     if resources.is_empty() {
         return Err(anyhow::anyhow!("No resources found"));
     }
 
-    let client = Client::try_default().await?;
+    let mut pool = ClientPool::new().await?;
 
     let token = CancellationToken::new();
     let mut set = JoinSet::new();
 
     for resource in resources {
-        set.spawn(bind(resource, client.clone(), token.child_token()));
+        let client = match (&resource.context, &context) {
+            (Some(context), _) | (_, Some(context)) => pool.get_or_insert(context).await?,
+            _ => pool.default(),
+        };
+
+        set.spawn(bind(resource, client, token.child_token()));
     }
 
     tokio::select! {

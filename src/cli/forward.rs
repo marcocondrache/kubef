@@ -12,14 +12,24 @@ use crate::{
 pub struct ForwardCommandArguments {
     #[arg(short, long, help = "The resource or group to forward")]
     pub target: String,
+
+    #[arg(short, long, help = "The kubeconfig context to use")]
+    pub context: Option<String>,
 }
 
-pub async fn init(ForwardCommandArguments { target }: ForwardCommandArguments) -> Result<()> {
+pub async fn init(
+    ForwardCommandArguments { target, context }: ForwardCommandArguments,
+) -> Result<()> {
     let mut config = cnf::extract()?;
 
     let resources = find_resources(&mut config, &target)?;
+    let context = match (config.context, context) {
+        (Some(_), Some(arg_context)) => Some(arg_context),
+        (Some(context), _) | (_, Some(context)) => Some(context),
+        _ => None,
+    };
 
-    fwd::init(resources).await
+    fwd::init(resources, context).await
 }
 
 fn find_resources(config: &mut cnf::schema::Config, target: &str) -> Result<Vec<Resource>> {

@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
+    pub context: Option<String>,
     pub groups: HashMap<String, Vec<Resource>>,
 }
 
@@ -13,6 +14,7 @@ pub struct Config {
 #[serde(deny_unknown_fields)]
 pub struct Resource {
     pub namespace: Namespace,
+    pub context: Option<String>,
     pub selector: ResourceSelector,
     pub alias: String,
     pub ports: Ports,

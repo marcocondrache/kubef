@@ -3,6 +3,12 @@
   "title": "Config",
   "type": "object",
   "properties": {
+    "context": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "groups": {
       "type": "object",
       "additionalProperties": {
@@ -51,6 +57,12 @@
       "properties": {
         "alias": {
           "type": "string"
+        },
+        "context": {
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "namespace": {
           "$ref": "#/$defs/Namespace"
