@@ -14,7 +14,7 @@ pub fn extract() -> Result<schema::Config> {
     let path = match env::var("KUBEF_CONFIG") {
         Ok(val) => std::path::PathBuf::from(val),
         Err(_) => xdg
-            .place_config_file("config.json")
+            .place_config_file("config.yaml")
             .expect("Failed to create default config file"),
     };
 
