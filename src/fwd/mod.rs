@@ -1,10 +1,7 @@
-use std::{collections::HashMap, net::SocketAddr};
+use std::net::{Ipv4Addr, SocketAddr};
 
 use crate::{
-    cnf::{
-        self,
-        schema::{Resource, ResourceSelector},
-    },
+    cnf::schema::{Resource, ResourceSelector},
     env::MAX_CONCURRENT_CONNECTIONS,
 };
 use anyhow::{Context, Result};
@@ -27,11 +24,7 @@ use tracing::{debug, error, info, instrument};
 
 mod watcher;
 
-pub async fn init(target: String) -> Result<()> {
-    let mut config = cnf::extract()?;
-
-    let resources = find_resources(&mut config, &target)?;
-
+pub async fn init(resources: Vec<Resource>) -> Result<()> {
     if resources.is_empty() {
         return Err(anyhow::anyhow!("No resources found"));
     }
@@ -64,10 +57,15 @@ pub async fn init(target: String) -> Result<()> {
 
 #[instrument(skip(client, token), fields(resource = %resource.alias))]
 pub async fn bind(resource: Resource, client: Client, token: CancellationToken) -> Result<()> {
-    let addr = SocketAddr::from(([127, 0, 0, 1], resource.ports.local));
+    // TODO: How to handle IPv6?
+    let addr = SocketAddr::from((Ipv4Addr::LOCALHOST, resource.ports.local));
     let server = TcpListener::bind(addr).await?;
 
-    info!("Listening TCP on {} forwarded to {}", addr, resource.alias);
+    info!(
+        "Listening TCP on {} forwarded to {}",
+        server.local_addr()?,
+        resource.alias
+    );
 
     let api: Api<Pod> = Api::namespaced(client.clone(), resource.namespace.as_ref());
     let selector = select(
@@ -194,30 +192,5 @@ pub async fn select(
 
             Ok(Selector::from_iter(expressions))
         }
-    }
-}
-
-fn find_resources(config: &mut cnf::schema::Config, target: &str) -> Result<Vec<Resource>> {
-    let alias_index: HashMap<String, Vec<Resource>> = config
-        .groups
-        .values()
-        .flat_map(|resources| resources.iter())
-        .fold(HashMap::new(), |mut acc, resource| {
-            acc.entry(resource.alias.clone())
-                .or_default()
-                .push(resource.clone());
-            acc
-        });
-
-    if let Some(resources) = alias_index.get(target) {
-        return Ok(resources.clone());
-    }
-
-    match config.groups.remove(target) {
-        Some(resources) => Ok(resources),
-        None => Err(anyhow::anyhow!(
-            "No resources found for target '{}' in aliases or groups",
-            target
-        )),
     }
 }
