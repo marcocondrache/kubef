@@ -24,12 +24,6 @@
     "groups"
   ],
   "$defs": {
-    "Namespace": {
-      "type": [
-        "string",
-        "null"
-      ]
-    },
     "Ports": {
       "type": "object",
       "properties": {
@@ -65,7 +59,10 @@
           ]
         },
         "namespace": {
-          "$ref": "#/$defs/Namespace"
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "ports": {
           "$ref": "#/$defs/Ports"
@@ -76,7 +73,6 @@
       },
       "additionalProperties": false,
       "required": [
-        "namespace",
         "selector",
         "alias",
         "ports"

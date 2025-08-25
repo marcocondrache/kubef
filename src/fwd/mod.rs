@@ -14,7 +14,6 @@ use k8s_openapi::api::{
 use kube::{
     Api, Client, ResourceExt,
     core::{Expression, Selector},
-    runtime::{conditions::is_pod_running, wait::await_condition},
 };
 use tokio::{
     io,
@@ -76,21 +75,14 @@ pub async fn bind(resource: Resource, client: Client, token: CancellationToken) 
         resource.alias
     );
 
-    let api: Api<Pod> = Api::namespaced(client.clone(), resource.namespace.as_ref());
-    let selector = select(
-        &resource.selector,
-        client.clone(),
-        resource.namespace.as_ref().to_string(),
-    )
-    .await?;
+    let default_namespace = client.default_namespace().to_string();
+    let namespace = resource.namespace.as_ref().unwrap_or(&default_namespace);
 
-    let watcher = watcher::PodWatcher::new(
-        client,
-        resource.namespace.as_ref().to_string(),
-        selector,
-        token.child_token(),
-    )
-    .await?;
+    let api: Api<Pod> = Api::namespaced(client.clone(), namespace);
+    let selector = select(&resource.selector, client.clone(), namespace).await?;
+
+    let watcher =
+        watcher::PodWatcher::new(client, namespace, selector, token.child_token()).await?;
 
     TcpListenerStream::new(server)
         .take_until(token.cancelled())
@@ -170,7 +162,7 @@ pub async fn forward(
 pub async fn select(
     selector: &ResourceSelector,
     client: Client,
-    namespace: String,
+    namespace: &str,
 ) -> Result<Selector> {
     match selector {
         ResourceSelector::Label(labels) => {

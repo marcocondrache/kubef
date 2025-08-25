@@ -13,7 +13,7 @@ pub struct Config {
 #[derive(Serialize, Deserialize, Clone, Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Resource {
-    pub namespace: Namespace,
+    pub namespace: Option<String>,
     pub context: Option<String>,
     pub selector: ResourceSelector,
     pub alias: String,
@@ -25,22 +25,6 @@ pub struct Resource {
 pub struct Ports {
     pub remote: u16,
     pub local: u16,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct Namespace(pub Option<String>);
-
-impl Default for Namespace {
-    fn default() -> Self {
-        Self(Some("default".to_string()))
-    }
-}
-
-impl AsRef<str> for Namespace {
-    fn as_ref(&self) -> &str {
-        self.0.as_ref().map_or("default", |s| s.as_str())
-    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, JsonSchema)]

@@ -29,11 +29,11 @@ pub struct PodWatcher {
 impl PodWatcher {
     pub async fn new(
         client: Client,
-        namespace: String,
+        namespace: &str,
         selector: Selector,
         token: CancellationToken,
     ) -> Result<Self> {
-        let api: Api<Pod> = Api::namespaced(client, namespace.as_ref());
+        let api: Api<Pod> = Api::namespaced(client, namespace);
         let config = watcher::Config::default().labels_from(&selector);
 
         let (store, writer) = reflector::store_shared(256);
