@@ -14,8 +14,10 @@ use k8s_openapi::api::{
 use kube::{
     Api, Client, ResourceExt,
     core::{Expression, Selector},
+    runtime::{conditions::is_pod_running, wait::await_condition},
 };
 use tokio::{
+    io,
     net::{TcpListener, TcpStream},
     task::JoinSet,
 };
@@ -98,9 +100,18 @@ pub async fn bind(resource: Resource, client: Client, token: CancellationToken) 
             let forward_token = token.child_token();
 
             async move {
-                let pod = next_pod.await.unwrap();
+                let pod = next_pod
+                    .await
+                    .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+
                 let pod_name = pod.name_any();
                 let pod_port = resource.ports.remote;
+
+                // TODO: where should we wait for the pod to be running?
+                // TODO: this could significantly slow down the connections
+                // await_condition(api.clone(), &pod_name, is_pod_running())
+                //     .await
+                //     .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
 
                 info!(
                     "Forwarding connection from {} to {}",
@@ -110,7 +121,7 @@ pub async fn bind(resource: Resource, client: Client, token: CancellationToken) 
 
                 tokio::spawn(forward(api, pod_port, pod_name, connection, forward_token));
 
-                Ok(())
+                Ok::<_, io::Error>(())
             }
         })
         .await?;
