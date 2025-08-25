@@ -24,6 +24,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, instrument};
 
 mod pool;
+mod proxy;
 mod watcher;
 
 pub async fn init(resources: Vec<Resource>, context: Option<String>) -> Result<()> {

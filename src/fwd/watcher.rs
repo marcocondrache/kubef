@@ -72,10 +72,13 @@ impl PodWatcher {
 
         info!("No pods found, waiting for next one");
 
-        self.subscriber
+        let pod = self
+            .subscriber
             .clone()
             .next()
             .await
-            .context("Cannot get next pod")
+            .context("Cannot get next pod")?;
+
+        Ok(pod)
     }
 }
