@@ -1,8 +1,10 @@
-use std::net::{Ipv4Addr, SocketAddr};
+use std::{
+    io,
+    net::{Ipv4Addr, SocketAddr},
+};
 
 use crate::{
     cnf::schema::{Resource, ResourceSelector, SelectorPolicy},
-    env::MAX_CONCURRENT_CONNECTIONS,
     fwd::pool::ClientPool,
 };
 use anyhow::{Context, Result};
@@ -16,7 +18,6 @@ use kube::{
     core::{Expression, Selector},
 };
 use tokio::{
-    io,
     net::{TcpListener, TcpStream},
     task::JoinSet,
 };
@@ -92,7 +93,7 @@ pub async fn bind(resource: Resource, client: Client, token: CancellationToken) 
 
     TcpListenerStream::new(server)
         .take_until(token.cancelled())
-        .try_for_each_concurrent(MAX_CONCURRENT_CONNECTIONS, |connection| {
+        .try_for_each(|connection| {
             let api = api.clone();
             let next_pod = watcher.next();
             let token = token.child_token();
@@ -108,12 +109,6 @@ pub async fn bind(resource: Resource, client: Client, token: CancellationToken) 
                 let pod_name = pod.name_any();
                 let pod_port = resource.ports.remote;
 
-                // TODO: where should we wait for the pod to be running?
-                // TODO: this could significantly slow down the connections
-                // await_condition(api.clone(), &pod_name, is_pod_running())
-                //     .await
-                //     .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-
                 info!(
                     "Forwarding connection from {} to {}",
                     connection.peer_addr()?,
@@ -122,7 +117,7 @@ pub async fn bind(resource: Resource, client: Client, token: CancellationToken) 
 
                 tokio::spawn(forward(api, pod_port, pod_name, connection, token));
 
-                Ok::<_, io::Error>(())
+                Ok(())
             }
         })
         .await?;
@@ -158,24 +153,27 @@ pub async fn forward(
 
     tokio::select! {
         biased;
-        () = token.cancelled() => {}
+        () = token.cancelled() => {},
         Some(e) = closer => {
-            error!("Error forwarding: {}", e);
-
             forwarding.abort();
+
+            anyhow::bail!("Error forwarding: {}", e);
         }
+        // TODO: 1:1 connection, no multiplexing
         Err(e) = tokio::io::copy_bidirectional(&mut connection, &mut upstream) => {
-            error!("Error forwarding: {}", e);
-
             forwarding.abort();
+
+            anyhow::bail!("Error forwarding: {}", e);
         }
     };
 
+    // Gracefully close the upstream connection
     drop(upstream);
 
-    forwarding.join().await?;
-
-    Ok(())
+    forwarding
+        .join()
+        .await
+        .context("Failed to conclude forward")
 }
 
 pub async fn select(
