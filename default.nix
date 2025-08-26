@@ -18,7 +18,7 @@ rustPlatform.buildRustPackage rec {
 
   buildInputs = lib.optionals stdenv.hostPlatform.isDarwin [ libiconv ];
 
-  cargoHash = "sha256-SpZigZGb+21xK0xhV2wbBf5iKH2JuMiO16wwCHmDSRg=";
+  cargoHash = "sha256-zqwPuXIAVXsEw6jAeE6wmjbgiC//Ubqn1G+4gHF25b8=";
 
   meta = with lib; {
     description = "A tool to help managing kubernetes forwarders";
