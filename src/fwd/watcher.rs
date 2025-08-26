@@ -17,7 +17,7 @@ use kube::{
     },
 };
 use tokio_util::sync::CancellationToken;
-use tracing::info;
+use tracing::{debug, info};
 
 use crate::cnf::schema::SelectorPolicy;
 
@@ -73,6 +73,8 @@ impl PodWatcher {
             };
 
             let index = counter % state.len();
+
+            debug!("Selecting pod {} of {}", index, state.len());
 
             return Ok(state
                 .get(index)

@@ -95,10 +95,15 @@ pub async fn bind(resource: Resource, client: Client, token: CancellationToken) 
         .try_for_each_concurrent(MAX_CONCURRENT_CONNECTIONS, |connection| {
             let api = api.clone();
             let next_pod = watcher.next();
-            let forward_token = token.child_token();
+            let token = token.child_token();
 
             async move {
-                let pod = next_pod.await.map_err(io::Error::other)?;
+                let pod = tokio::select! {
+                    biased;
+                    _ = token.cancelled() => Err(anyhow::anyhow!("Selection cancelled")),
+                    pod = next_pod => pod
+                }
+                .map_err(io::Error::other)?;
 
                 let pod_name = pod.name_any();
                 let pod_port = resource.ports.remote;
@@ -115,7 +120,7 @@ pub async fn bind(resource: Resource, client: Client, token: CancellationToken) 
                     pod_name
                 );
 
-                tokio::spawn(forward(api, pod_port, pod_name, connection, forward_token));
+                tokio::spawn(forward(api, pod_port, pod_name, connection, token));
 
                 Ok::<_, io::Error>(())
             }
