@@ -1,6 +1,9 @@
-use std::sync::{
-    Arc,
-    atomic::{AtomicUsize, Ordering},
+use std::{
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
+    time::Duration,
 };
 
 use anyhow::{Context, Result};
@@ -54,7 +57,10 @@ impl PodWatcher {
                 .await;
         });
 
-        store.wait_until_ready().await?;
+        tokio::time::timeout(Duration::from_secs(10), store.wait_until_ready())
+            .await
+            .context("Timeout waiting for pods")?
+            .context("Failed to wait for pods")?;
 
         Ok(Self {
             store,
