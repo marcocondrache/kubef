@@ -180,41 +180,41 @@ pub async fn select(
 ) -> Result<Selector> {
     match selector {
         ResourceSelector::Label(labels) => {
-            let mut selector = Selector::default();
-
-            selector.extend(
+            let result = Selector::from_iter(
                 labels
-                    .iter()
+                    .into_iter()
                     .map(|(k, v)| Expression::In(k.to_owned(), [v.to_owned()].into())),
             );
 
-            Ok(selector)
+            Ok(result)
         }
         ResourceSelector::Deployment(name) => {
             let api: Api<Deployment> = Api::namespaced(client, namespace);
             let deployment = api.get(name).await?;
             let selector = deployment.spec.context("Deployment has no spec")?.selector;
             // TODO: Handle match expressions
-            let expressions = selector
-                .match_labels
-                .context("Deployment has no selector")?
-                .into_iter()
-                .map(|(k, v)| Expression::In(k, [v].into()))
-                .collect::<Vec<_>>();
+            let result = Selector::from_iter(
+                selector
+                    .match_labels
+                    .context("Deployment has no selector")?
+                    .into_iter()
+                    .map(|(k, v)| Expression::In(k, [v].into())),
+            );
 
-            Ok(Selector::from_iter(expressions))
+            Ok(result)
         }
         ResourceSelector::Service(name) => {
             let api: Api<Service> = Api::namespaced(client, namespace);
             let service = api.get(name).await?;
             let selector = service.spec.context("Service has no spec")?.selector;
-            let expressions = selector
-                .context("Service has no selector")?
-                .into_iter()
-                .map(|(k, v)| Expression::In(k, [v].into()))
-                .collect::<Vec<_>>();
+            let result = Selector::from_iter(
+                selector
+                    .context("Service has no selector")?
+                    .into_iter()
+                    .map(|(k, v)| Expression::In(k, [v].into())),
+            );
 
-            Ok(Selector::from_iter(expressions))
+            Ok(result)
         }
     }
 }
