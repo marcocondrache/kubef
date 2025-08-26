@@ -92,9 +92,7 @@ pub async fn bind(resource: Resource, client: Client, token: CancellationToken) 
             let forward_token = token.child_token();
 
             async move {
-                let pod = next_pod
-                    .await
-                    .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+                let pod = next_pod.await.map_err(io::Error::other)?;
 
                 let pod_name = pod.name_any();
                 let pod_port = resource.ports.remote;
@@ -177,7 +175,7 @@ pub async fn select(
             Ok(selector)
         }
         ResourceSelector::Deployment(name) => {
-            let api: Api<Deployment> = Api::namespaced(client, &namespace);
+            let api: Api<Deployment> = Api::namespaced(client, namespace);
             let deployment = api.get(name).await?;
             let selector = deployment.spec.context("Deployment has no spec")?.selector;
             // TODO: Handle match expressions
@@ -191,7 +189,7 @@ pub async fn select(
             Ok(Selector::from_iter(expressions))
         }
         ResourceSelector::Service(name) => {
-            let api: Api<Service> = Api::namespaced(client, &namespace);
+            let api: Api<Service> = Api::namespaced(client, namespace);
             let service = api.get(name).await?;
             let selector = service.spec.context("Service has no spec")?.selector;
             let expressions = selector
