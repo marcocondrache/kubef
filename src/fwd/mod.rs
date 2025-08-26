@@ -130,7 +130,6 @@ pub async fn forward(
     // Optimization
     connection.set_nodelay(true)?;
     connection.set_linger(None)?;
-    connection.set_ttl(128)?;
 
     debug!("Opening upstream connection to {}", pod_name);
 
@@ -140,13 +139,24 @@ pub async fn forward(
         .take_stream(pod_port)
         .context("Failed to take stream")?;
 
+    let closer = forwarding
+        .take_error(pod_port)
+        .context("Failed to take error stream")?;
+
     debug!("Upstream connection opened");
 
     tokio::select! {
         biased;
         () = token.cancelled() => {}
+        Some(e) = closer => {
+            error!("Error forwarding: {}", e);
+
+            forwarding.abort();
+        }
         Err(e) = tokio::io::copy_bidirectional(&mut connection, &mut upstream) => {
             error!("Error forwarding: {}", e);
+
+            forwarding.abort();
         }
     };
 
