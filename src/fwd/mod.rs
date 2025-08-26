@@ -1,14 +1,10 @@
-use std::{
-    io,
-    net::{Ipv4Addr, SocketAddr},
-};
+use std::net::{Ipv4Addr, SocketAddr};
 
 use crate::{
     cnf::schema::{Resource, ResourceSelector, SelectorPolicy},
     fwd::pool::ClientPool,
 };
 use anyhow::{Context, Result};
-use futures::{StreamExt, TryStreamExt};
 use k8s_openapi::api::{
     apps::v1::Deployment,
     core::v1::{Pod, Service},
@@ -21,7 +17,6 @@ use tokio::{
     net::{TcpListener, TcpStream},
     task::JoinSet,
 };
-use tokio_stream::wrappers::TcpListenerStream;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, instrument};
 
@@ -91,36 +86,38 @@ pub async fn bind(resource: Resource, client: Client, token: CancellationToken) 
     )
     .await?;
 
-    TcpListenerStream::new(server)
-        .take_until(token.cancelled())
-        .try_for_each(|connection| {
-            let api = api.clone();
-            let next_pod = watcher.next();
-            let token = token.child_token();
+    let mut set = JoinSet::new();
 
-            async move {
-                let pod = tokio::select! {
-                    biased;
-                    _ = token.cancelled() => Err(anyhow::anyhow!("Selection cancelled")),
-                    pod = next_pod => pod
-                }
-                .map_err(io::Error::other)?;
+    loop {
+        tokio::select! {
+            biased;
+            _ = token.cancelled() => break,
+            Ok((connection, addr)) = server.accept() => {
+                let api = api.clone();
+                let token = token.child_token();
 
+                // TODO: this doesn't get cancelled
+                let pod = watcher.next().await?;
                 let pod_name = pod.name_any();
                 let pod_port = resource.ports.remote;
 
                 info!(
                     "Forwarding connection from {} to {}",
-                    connection.peer_addr()?,
+                    addr,
                     pod_name
                 );
 
-                tokio::spawn(forward(api, pod_port, pod_name, connection, token));
-
-                Ok(())
+                set.spawn(forward(api, pod_port, pod_name, connection, token));
             }
-        })
-        .await?;
+            else => break,
+        }
+    }
+
+    while let Some(result) = set.join_next().await {
+        if let Err(e) = result {
+            error!("Error: {}", e);
+        }
+    }
 
     Ok(())
 }
