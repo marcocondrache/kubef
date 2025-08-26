@@ -19,11 +19,14 @@ use kube::{
 use tokio_util::sync::CancellationToken;
 use tracing::info;
 
+use crate::cnf::schema::SelectorPolicy;
+
 #[derive(Clone)]
 pub struct PodWatcher {
     store: Store<PartialObjectMeta<Pod>>,
     subscriber: ReflectHandle<PartialObjectMeta<Pod>>,
     counter: Arc<AtomicUsize>,
+    policy: SelectorPolicy,
 }
 
 impl PodWatcher {
@@ -31,6 +34,7 @@ impl PodWatcher {
         client: Client,
         namespace: &str,
         selector: Selector,
+        policy: SelectorPolicy,
         token: CancellationToken,
     ) -> Result<Self> {
         let api: Api<Pod> = Api::namespaced(client, namespace);
@@ -56,13 +60,19 @@ impl PodWatcher {
             store,
             subscriber,
             counter: Arc::new(AtomicUsize::new(0)),
+            policy,
         })
     }
 
     pub async fn next(&self) -> Result<Arc<PartialObjectMeta<Pod>>> {
         if !self.store.is_empty() {
             let state = self.store.state();
-            let index = self.counter.fetch_add(1, Ordering::Relaxed) % state.len();
+            let counter = match self.policy {
+                SelectorPolicy::Sticky => self.counter.load(Ordering::Relaxed),
+                SelectorPolicy::RoundRobin => self.counter.fetch_add(1, Ordering::Relaxed),
+            };
+
+            let index = counter % state.len();
 
             return Ok(state
                 .get(index)

@@ -1,7 +1,7 @@
 use std::net::{Ipv4Addr, SocketAddr};
 
 use crate::{
-    cnf::schema::{Resource, ResourceSelector},
+    cnf::schema::{Resource, ResourceSelector, SelectorPolicy},
     env::MAX_CONCURRENT_CONNECTIONS,
     fwd::pool::ClientPool,
 };
@@ -81,8 +81,14 @@ pub async fn bind(resource: Resource, client: Client, token: CancellationToken) 
     let api: Api<Pod> = Api::namespaced(client.clone(), namespace);
     let selector = select(&resource.selector, client.clone(), namespace).await?;
 
-    let watcher =
-        watcher::PodWatcher::new(client, namespace, selector, token.child_token()).await?;
+    let watcher = watcher::PodWatcher::new(
+        client,
+        namespace,
+        selector,
+        resource.policy.unwrap_or(SelectorPolicy::RoundRobin),
+        token.child_token(),
+    )
+    .await?;
 
     TcpListenerStream::new(server)
         .take_until(token.cancelled())
