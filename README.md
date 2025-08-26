@@ -35,7 +35,7 @@ The binary will be available at `target/release/kubef`.
 `kubef` uses YAML configuration files to define forwarding rules. By default, it looks for configuration in:
 
 - `$KUBEF_CONFIG` (if set)
-- `~/.config/kubef/config.json` (XDG config directory)
+- `~/.config/kubef/config.yaml` (XDG config directory)
 
 ### Configuration Format
 
