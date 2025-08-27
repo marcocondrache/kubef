@@ -1,25 +1,23 @@
-use std::{borrow::Cow, collections::HashMap};
+use std::collections::HashMap;
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-type ConfigStr<'a> = Cow<'a, str>;
-
 #[derive(Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct Config<'a> {
-    pub context: Option<ConfigStr<'a>>,
-    pub groups: HashMap<ConfigStr<'a>, Vec<Resource<'a>>>,
+pub struct Config {
+    pub context: Option<String>,
+    pub groups: HashMap<String, Vec<Resource>>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct Resource<'a> {
-    pub namespace: Option<ConfigStr<'a>>,
-    pub context: Option<ConfigStr<'a>>,
+pub struct Resource {
+    pub namespace: Option<String>,
+    pub context: Option<String>,
     pub policy: Option<SelectorPolicy>,
-    pub selector: ResourceSelector<'a>,
-    pub alias: ConfigStr<'a>,
+    pub selector: ResourceSelector,
+    pub alias: String,
     pub ports: Ports,
 }
 
@@ -42,8 +40,8 @@ pub enum SelectorPolicy {
 #[serde(rename_all = "lowercase")]
 #[serde(tag = "type", content = "match")]
 #[serde(deny_unknown_fields)]
-pub enum ResourceSelector<'a> {
-    Label(Vec<(ConfigStr<'a>, ConfigStr<'a>)>),
-    Deployment(ConfigStr<'a>),
-    Service(ConfigStr<'a>),
+pub enum ResourceSelector {
+    Label(Vec<(String, String)>),
+    Deployment(String),
+    Service(String),
 }

@@ -1,11 +1,10 @@
-use std::collections::HashMap;
-
 use anyhow::Result;
 use clap::Args;
+use either::Either;
 
 use crate::{
-    cnf::{self, schema::Resource},
-    fwd,
+    cnf::{self},
+    fwd::{self, Target},
 };
 
 #[derive(Args)]
@@ -20,9 +19,9 @@ pub struct ForwardCommandArguments {
 pub async fn init(
     ForwardCommandArguments { target, context }: ForwardCommandArguments,
 ) -> Result<()> {
-    let mut config = cnf::extract()?;
+    let config = cnf::extract().await?;
 
-    let resources = find_resources(&mut config, &target)?;
+    let resources = get_target(config, &target)?;
     let context = match (config.context.as_deref(), context.as_deref()) {
         (Some(_), Some(arg_context)) => Some(arg_context),
         (Some(context), _) | (_, Some(context)) => Some(context),
@@ -32,27 +31,18 @@ pub async fn init(
     fwd::init(resources, context).await
 }
 
-fn find_resources<'a>(
-    config: &mut cnf::schema::Config<'a>,
-    target: &str,
-) -> Result<Vec<Resource<'a>>> {
-    let alias_index: HashMap<String, Vec<Resource>> = config
+fn get_target<'a>(config: &'a cnf::schema::Config, target: &str) -> Result<Target<'a>> {
+    if let Some(resource) = config
         .groups
         .values()
         .flat_map(|resources| resources.iter())
-        .fold(HashMap::new(), |mut acc, resource| {
-            acc.entry(resource.alias.to_string())
-                .or_default()
-                .push(resource.clone());
-            acc
-        });
-
-    if let Some(resources) = alias_index.get(target) {
-        return Ok(resources.clone());
+        .find(|resource| resource.alias == target)
+    {
+        return Ok(Either::Left(resource));
     }
 
-    match config.groups.remove(target) {
-        Some(resources) => Ok(resources),
+    match config.groups.get(target) {
+        Some(resources) => Ok(Either::Right(resources)),
         None => Err(anyhow::anyhow!(
             "No resources found for target '{}' in aliases or groups",
             target

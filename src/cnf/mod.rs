@@ -1,14 +1,13 @@
 use std::env;
 
 use anyhow::Result;
-use figment::{
-    Figment,
-    providers::{Format, YamlExtended},
-};
+use tokio::sync::OnceCell;
 
 pub mod schema;
 
-pub fn extract() -> Result<schema::Config<'static>> {
+static CNF: OnceCell<schema::Config> = OnceCell::const_new();
+
+pub async fn extract() -> Result<&'static schema::Config> {
     let xdg = xdg::BaseDirectories::with_prefix("kubef");
 
     let path = match env::var("KUBEF_CONFIG") {
@@ -18,8 +17,14 @@ pub fn extract() -> Result<schema::Config<'static>> {
             .expect("Failed to create default config file"),
     };
 
-    Figment::new()
-        .merge(YamlExtended::file(&path))
-        .extract()
-        .map_err(|e| anyhow::anyhow!("Failed to parse config: {}", e))
+    let config = CNF
+        .get_or_try_init(|| async {
+            let config = tokio::fs::read(path).await?;
+            let config: schema::Config = serde_yml::from_slice(&config)?;
+
+            Ok::<_, anyhow::Error>(config)
+        })
+        .await?;
+
+    Ok(config)
 }

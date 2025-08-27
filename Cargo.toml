@@ -1,9 +1,10 @@
 [package]
 name = "kubef"
-version = "1.2.5"
+version = "1.2.6"
 edition = "2024"
 
 [dependencies]
+either = "1.15.0"
 tracing = "0.1.41"
 schemars = "1.0.4"
 futures = "0.3.31"
@@ -11,7 +12,7 @@ anyhow = "1.0.99"
 xdg = "3.0.0"
 
 serde = { version = "1.0.219", features = ["derive"] }
-figment = { version = "0.10.19", features = ["yaml"] }
+serde_yml = { version = "0.0.12" }
 clap = { version = "4.5.45", features = ["derive"] }
 tokio = { version = "1.47.1", features = ["full"] }
 tokio-util = { version = "0.7.16" }

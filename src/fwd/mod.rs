@@ -5,6 +5,7 @@ use crate::{
     fwd::pool::ClientPool,
 };
 use anyhow::{Context, Result};
+use either::Either;
 use k8s_openapi::api::{
     apps::v1::Deployment,
     core::v1::{Pod, Service},
@@ -23,23 +24,22 @@ use tracing::{debug, error, info, instrument};
 mod pool;
 mod watcher;
 
-pub async fn init(resources: Vec<Resource<'static>>, context: Option<&str>) -> Result<()> {
-    if resources.is_empty() {
-        return Err(anyhow::anyhow!("No resources found"));
-    }
+pub type Target<'a> = Either<&'a Resource, &'a Vec<Resource>>;
 
-    let mut pool = ClientPool::new().await?;
-
+pub async fn init(target: Target<'static>, context: Option<&str>) -> Result<()> {
     let token = CancellationToken::new();
     let mut set = JoinSet::new();
+    let mut pool = ClientPool::new().await?;
 
-    for resource in resources {
-        let client = match (resource.context.as_deref(), context) {
-            (Some(context), _) | (_, Some(context)) => pool.get_or_insert(context).await?,
-            _ => pool.default(),
-        };
-
-        set.spawn(bind(resource, client, token.child_token()));
+    match target {
+        Either::Left(resource) => {
+            spawn(resource, &mut set, &mut pool, context, token.child_token()).await?;
+        }
+        Either::Right(resources) => {
+            for resource in resources {
+                spawn(resource, &mut set, &mut pool, context, token.child_token()).await?;
+            }
+        }
     }
 
     tokio::select! {
@@ -59,8 +59,26 @@ pub async fn init(resources: Vec<Resource<'static>>, context: Option<&str>) -> R
     Ok(())
 }
 
+#[inline]
+pub async fn spawn(
+    resource: &'static Resource,
+    set: &mut JoinSet<Result<()>>,
+    pool: &mut ClientPool,
+    context: Option<&str>,
+    token: CancellationToken,
+) -> Result<()> {
+    let client = match (resource.context.as_deref(), context) {
+        (Some(context), _) | (_, Some(context)) => pool.get_or_insert(context).await?,
+        _ => pool.default(),
+    };
+
+    set.spawn(bind(resource, client, token));
+
+    Ok(())
+}
+
 #[instrument(skip(client, token), fields(resource = %resource.alias))]
-pub async fn bind(resource: Resource<'_>, client: Client, token: CancellationToken) -> Result<()> {
+pub async fn bind(resource: &Resource, client: Client, token: CancellationToken) -> Result<()> {
     // TODO: How to handle IPv6?
     let addr = SocketAddr::from((Ipv4Addr::LOCALHOST, resource.ports.local));
     let server = TcpListener::bind(addr).await?;
@@ -75,13 +93,17 @@ pub async fn bind(resource: Resource<'_>, client: Client, token: CancellationTok
     let namespace = resource.namespace.as_deref().unwrap_or(default_namespace);
 
     let api: Api<Pod> = Api::namespaced(client.clone(), namespace);
-    let selector = select(client.clone(), resource.selector, namespace).await?;
+    let selector = select(client.clone(), &resource.selector, namespace).await?;
+    let policy = resource
+        .policy
+        .clone()
+        .unwrap_or(SelectorPolicy::RoundRobin);
 
     let watcher = watcher::PodWatcher::new(
         client.clone(),
         namespace,
         selector,
-        resource.policy.unwrap_or(SelectorPolicy::RoundRobin),
+        policy,
         token.child_token(),
     )
     .await?;
@@ -174,21 +196,21 @@ pub async fn forward(
 
 pub async fn select(
     client: Client,
-    selector: ResourceSelector<'_>,
+    selector: &ResourceSelector,
     namespace: &str,
 ) -> Result<Selector> {
     match selector {
         ResourceSelector::Label(labels) => {
             let result = labels
-                .into_iter()
-                .map(|(k, v)| Expression::In(k.to_string(), [v.to_string()].into()))
+                .iter()
+                .map(|(k, v)| Expression::In(k.to_owned(), [v.to_owned()].into()))
                 .collect::<Selector>();
 
             Ok(result)
         }
         ResourceSelector::Deployment(name) => {
             let api: Api<Deployment> = Api::namespaced(client, namespace);
-            let deployment = api.get(&name).await?;
+            let deployment = api.get(name).await?;
             let selector = deployment.spec.context("Deployment has no spec")?.selector;
             // TODO: Handle match expressions
             let result = selector
@@ -202,7 +224,7 @@ pub async fn select(
         }
         ResourceSelector::Service(name) => {
             let api: Api<Service> = Api::namespaced(client, namespace);
-            let service = api.get(&name).await?;
+            let service = api.get(name).await?;
             let selector = service.spec.context("Service has no spec")?.selector;
 
             let result = selector
