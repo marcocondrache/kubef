@@ -108,6 +108,8 @@ pub async fn bind(resource: &Resource, client: Client, token: CancellationToken)
     let mut set = JoinSet::new();
 
     loop {
+        debug!("Current connections: {}", set.len());
+
         tokio::select! {
             biased;
             () = token.cancelled() => break,
@@ -182,7 +184,8 @@ pub async fn forward(
         }
     };
 
-    // Gracefully close the upstream connection
+    debug!("Connection closed, bye {}!", pod_name);
+
     drop(upstream);
 
     forwarding
