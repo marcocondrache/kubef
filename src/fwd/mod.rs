@@ -34,7 +34,7 @@ pub async fn init(resources: Vec<Resource<'static>>, context: Option<&str>) -> R
     let mut set = JoinSet::new();
 
     for resource in resources {
-        let client = match (resource.context, context) {
+        let client = match (resource.context.as_deref(), context) {
             (Some(context), _) | (_, Some(context)) => pool.get_or_insert(context).await?,
             _ => pool.default(),
         };
@@ -72,7 +72,7 @@ pub async fn bind(resource: Resource<'_>, client: Client, token: CancellationTok
     );
 
     let default_namespace = client.default_namespace();
-    let namespace = resource.namespace.unwrap_or(default_namespace);
+    let namespace = resource.namespace.as_deref().unwrap_or(default_namespace);
 
     let api: Api<Pod> = Api::namespaced(client.clone(), namespace);
     let selector = select(client.clone(), resource.selector, namespace).await?;
@@ -188,7 +188,7 @@ pub async fn select(
         }
         ResourceSelector::Deployment(name) => {
             let api: Api<Deployment> = Api::namespaced(client, namespace);
-            let deployment = api.get(name).await?;
+            let deployment = api.get(&name).await?;
             let selector = deployment.spec.context("Deployment has no spec")?.selector;
             // TODO: Handle match expressions
             let result = selector
@@ -202,7 +202,7 @@ pub async fn select(
         }
         ResourceSelector::Service(name) => {
             let api: Api<Service> = Api::namespaced(client, namespace);
-            let service = api.get(name).await?;
+            let service = api.get(&name).await?;
             let selector = service.spec.context("Service has no spec")?.selector;
 
             let result = selector

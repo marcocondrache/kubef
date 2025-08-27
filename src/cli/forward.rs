@@ -23,7 +23,7 @@ pub async fn init(
     let mut config = cnf::extract()?;
 
     let resources = find_resources(&mut config, &target)?;
-    let context = match (config.context, context.as_deref()) {
+    let context = match (config.context.as_deref(), context.as_deref()) {
         (Some(_), Some(arg_context)) => Some(arg_context),
         (Some(context), _) | (_, Some(context)) => Some(context),
         _ => None,
