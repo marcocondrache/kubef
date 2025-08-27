@@ -23,7 +23,7 @@ use tracing::{debug, error, info, instrument};
 mod pool;
 mod watcher;
 
-pub async fn init(resources: Vec<Resource>, context: Option<String>) -> Result<()> {
+pub async fn init(resources: Vec<Resource<'static>>, context: Option<&str>) -> Result<()> {
     if resources.is_empty() {
         return Err(anyhow::anyhow!("No resources found"));
     }
@@ -34,7 +34,7 @@ pub async fn init(resources: Vec<Resource>, context: Option<String>) -> Result<(
     let mut set = JoinSet::new();
 
     for resource in resources {
-        let client = match (&resource.context, &context) {
+        let client = match (resource.context, context) {
             (Some(context), _) | (_, Some(context)) => pool.get_or_insert(context).await?,
             _ => pool.default(),
         };
@@ -60,7 +60,7 @@ pub async fn init(resources: Vec<Resource>, context: Option<String>) -> Result<(
 }
 
 #[instrument(skip(client, token), fields(resource = %resource.alias))]
-pub async fn bind(resource: Resource, client: Client, token: CancellationToken) -> Result<()> {
+pub async fn bind(resource: Resource<'_>, client: Client, token: CancellationToken) -> Result<()> {
     // TODO: How to handle IPv6?
     let addr = SocketAddr::from((Ipv4Addr::LOCALHOST, resource.ports.local));
     let server = TcpListener::bind(addr).await?;
@@ -71,14 +71,14 @@ pub async fn bind(resource: Resource, client: Client, token: CancellationToken) 
         resource.alias
     );
 
-    let default_namespace = client.default_namespace().to_string();
-    let namespace = resource.namespace.as_ref().unwrap_or(&default_namespace);
+    let default_namespace = client.default_namespace();
+    let namespace = resource.namespace.unwrap_or(default_namespace);
 
     let api: Api<Pod> = Api::namespaced(client.clone(), namespace);
-    let selector = select(&resource.selector, client.clone(), namespace).await?;
+    let selector = select(client.clone(), resource.selector, namespace).await?;
 
     let watcher = watcher::PodWatcher::new(
-        client,
+        client.clone(),
         namespace,
         selector,
         resource.policy.unwrap_or(SelectorPolicy::RoundRobin),
@@ -91,7 +91,7 @@ pub async fn bind(resource: Resource, client: Client, token: CancellationToken) 
     loop {
         tokio::select! {
             biased;
-            _ = token.cancelled() => break,
+            () = token.cancelled() => break,
             Ok((connection, addr)) = server.accept() => {
                 let api = api.clone();
                 let token = token.child_token();
@@ -107,22 +107,22 @@ pub async fn bind(resource: Resource, client: Client, token: CancellationToken) 
                     pod_name
                 );
 
-                set.spawn(forward(api, pod_port, pod_name, connection, token));
+                set.spawn(async move {
+                    if let Err(e) = forward(api, pod_port, pod_name, connection, token).await {
+                        error!("Error forwarding: {}", e);
+                    }
+                });
             }
             else => break,
         }
     }
 
-    while let Some(result) = set.join_next().await {
-        if let Err(e) = result {
-            error!("Error: {}", e);
-        }
-    }
+    set.join_all().await;
 
     Ok(())
 }
 
-#[instrument(skip(api, connection, token), fields(pod = %pod_name))]
+#[instrument(skip(api, connection, token))]
 pub async fn forward(
     api: Api<Pod>,
     pod_port: u16,
@@ -154,13 +154,12 @@ pub async fn forward(
         Some(e) = closer => {
             forwarding.abort();
 
-            anyhow::bail!("Error forwarding: {}", e);
+            anyhow::bail!(e);
         }
-        // TODO: 1:1 connection, no multiplexing
         Err(e) = tokio::io::copy_bidirectional(&mut connection, &mut upstream) => {
             forwarding.abort();
 
-            anyhow::bail!("Error forwarding: {}", e);
+            anyhow::bail!(e);
         }
     };
 
@@ -174,17 +173,16 @@ pub async fn forward(
 }
 
 pub async fn select(
-    selector: &ResourceSelector,
     client: Client,
+    selector: ResourceSelector<'_>,
     namespace: &str,
 ) -> Result<Selector> {
     match selector {
         ResourceSelector::Label(labels) => {
-            let result = Selector::from_iter(
-                labels
-                    .into_iter()
-                    .map(|(k, v)| Expression::In(k.to_owned(), [v.to_owned()].into())),
-            );
+            let result = labels
+                .into_iter()
+                .map(|(k, v)| Expression::In(k.to_string(), [v.to_string()].into()))
+                .collect::<Selector>();
 
             Ok(result)
         }
@@ -193,13 +191,12 @@ pub async fn select(
             let deployment = api.get(name).await?;
             let selector = deployment.spec.context("Deployment has no spec")?.selector;
             // TODO: Handle match expressions
-            let result = Selector::from_iter(
-                selector
-                    .match_labels
-                    .context("Deployment has no selector")?
-                    .into_iter()
-                    .map(|(k, v)| Expression::In(k, [v].into())),
-            );
+            let result = selector
+                .match_labels
+                .context("Deployment has no selector")?
+                .into_iter()
+                .map(|(k, v)| Expression::In(k, [v].into()))
+                .collect::<Selector>();
 
             Ok(result)
         }
@@ -207,12 +204,12 @@ pub async fn select(
             let api: Api<Service> = Api::namespaced(client, namespace);
             let service = api.get(name).await?;
             let selector = service.spec.context("Service has no spec")?.selector;
-            let result = Selector::from_iter(
-                selector
-                    .context("Service has no selector")?
-                    .into_iter()
-                    .map(|(k, v)| Expression::In(k, [v].into())),
-            );
+
+            let result = selector
+                .context("Service has no selector")?
+                .into_iter()
+                .map(|(k, v)| Expression::In(k, [v].into()))
+                .collect::<Selector>();
 
             Ok(result)
         }

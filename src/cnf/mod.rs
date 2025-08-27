@@ -8,7 +8,7 @@ use figment::{
 
 pub mod schema;
 
-pub fn extract() -> Result<schema::Config> {
+pub fn extract() -> Result<schema::Config<'static>> {
     let xdg = xdg::BaseDirectories::with_prefix("kubef");
 
     let path = match env::var("KUBEF_CONFIG") {

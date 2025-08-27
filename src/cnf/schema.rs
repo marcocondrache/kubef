@@ -5,19 +5,19 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct Config {
-    pub context: Option<String>,
-    pub groups: HashMap<String, Vec<Resource>>,
+pub struct Config<'a> {
+    pub context: Option<&'a str>,
+    pub groups: HashMap<&'a str, Vec<Resource<'a>>>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct Resource {
-    pub namespace: Option<String>,
-    pub context: Option<String>,
+pub struct Resource<'a> {
+    pub namespace: Option<&'a str>,
+    pub context: Option<&'a str>,
     pub policy: Option<SelectorPolicy>,
-    pub selector: ResourceSelector,
-    pub alias: String,
+    pub selector: ResourceSelector<'a>,
+    pub alias: &'a str,
     pub ports: Ports,
 }
 
@@ -40,8 +40,8 @@ pub enum SelectorPolicy {
 #[serde(rename_all = "lowercase")]
 #[serde(tag = "type", content = "match")]
 #[serde(deny_unknown_fields)]
-pub enum ResourceSelector {
-    Label(Vec<(String, String)>),
-    Deployment(String),
-    Service(String),
+pub enum ResourceSelector<'a> {
+    Label(Vec<(&'a str, &'a str)>),
+    Deployment(&'a str),
+    Service(&'a str),
 }

@@ -23,7 +23,7 @@ pub async fn init(
     let mut config = cnf::extract()?;
 
     let resources = find_resources(&mut config, &target)?;
-    let context = match (config.context, context) {
+    let context = match (config.context, context.as_deref()) {
         (Some(_), Some(arg_context)) => Some(arg_context),
         (Some(context), _) | (_, Some(context)) => Some(context),
         _ => None,
@@ -32,13 +32,16 @@ pub async fn init(
     fwd::init(resources, context).await
 }
 
-fn find_resources(config: &mut cnf::schema::Config, target: &str) -> Result<Vec<Resource>> {
+fn find_resources<'a>(
+    config: &mut cnf::schema::Config<'a>,
+    target: &str,
+) -> Result<Vec<Resource<'a>>> {
     let alias_index: HashMap<String, Vec<Resource>> = config
         .groups
         .values()
         .flat_map(|resources| resources.iter())
         .fold(HashMap::new(), |mut acc, resource| {
-            acc.entry(resource.alias.clone())
+            acc.entry(resource.alias.to_string())
                 .or_default()
                 .push(resource.clone());
             acc

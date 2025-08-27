@@ -14,7 +14,7 @@ use kube::{
     api::PartialObjectMeta,
     core::Selector,
     runtime::{
-        WatchStreamExt,
+        WatchStreamExt, predicates,
         reflector::{self, ReflectHandle, Store},
         watcher::{self},
     },
@@ -49,9 +49,10 @@ impl PodWatcher {
 
         tokio::spawn(async move {
             watcher::metadata_watcher(api, config)
-                .default_backoff()
                 .reflect(writer)
+                .default_backoff()
                 .applied_objects()
+                .predicate_filter(predicates::labels)
                 .take_until(token.cancelled())
                 .for_each(|_| ready(()))
                 .await;
