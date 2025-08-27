@@ -10,7 +10,7 @@ use anyhow::{Context, Result};
 use futures::{StreamExt, future::ready};
 use k8s_openapi::api::core::v1::Pod;
 use kube::{
-    Api, Client,
+    Api,
     api::PartialObjectMeta,
     core::Selector,
     runtime::{
@@ -34,13 +34,11 @@ pub struct PodWatcher {
 
 impl PodWatcher {
     pub async fn new(
-        client: Client,
-        namespace: &str,
+        api: Api<Pod>,
         selector: Selector,
         policy: SelectorPolicy,
         token: CancellationToken,
     ) -> Result<Self> {
-        let api: Api<Pod> = Api::namespaced(client, namespace);
         let config = watcher::Config::default().labels_from(&selector);
 
         let (store, writer) = reflector::store_shared(256);

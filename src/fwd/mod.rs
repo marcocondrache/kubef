@@ -1,4 +1,7 @@
-use std::net::{Ipv4Addr, SocketAddr};
+use std::{
+    net::{Ipv4Addr, SocketAddr},
+    sync::Arc,
+};
 
 use crate::{
     cnf::schema::{Resource, ResourceSelector, SelectorPolicy},
@@ -92,21 +95,15 @@ pub async fn bind(resource: &Resource, client: Client, token: CancellationToken)
     let default_namespace = client.default_namespace();
     let namespace = resource.namespace.as_deref().unwrap_or(default_namespace);
 
-    let api: Api<Pod> = Api::namespaced(client.clone(), namespace);
+    let api = Api::<Pod>::namespaced(client.clone(), namespace);
+    let api_ptr = Arc::new(api.clone());
     let selector = select(client.clone(), &resource.selector, namespace).await?;
     let policy = resource
         .policy
         .clone()
         .unwrap_or(SelectorPolicy::RoundRobin);
 
-    let watcher = watcher::PodWatcher::new(
-        client.clone(),
-        namespace,
-        selector,
-        policy,
-        token.child_token(),
-    )
-    .await?;
+    let watcher = watcher::PodWatcher::new(api, selector, policy, token.child_token()).await?;
 
     let mut set = JoinSet::new();
 
@@ -115,7 +112,7 @@ pub async fn bind(resource: &Resource, client: Client, token: CancellationToken)
             biased;
             () = token.cancelled() => break,
             Ok((connection, addr)) = server.accept() => {
-                let api = api.clone();
+                let api = api_ptr.clone();
                 let token = token.child_token();
 
                 // TODO: this doesn't get cancelled
@@ -146,7 +143,7 @@ pub async fn bind(resource: &Resource, client: Client, token: CancellationToken)
 
 #[instrument(skip(api, connection, token))]
 pub async fn forward(
-    api: Api<Pod>,
+    api: Arc<Api<Pod>>,
     pod_port: u16,
     pod_name: String,
     mut connection: TcpStream,
