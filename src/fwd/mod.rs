@@ -95,6 +95,7 @@ pub async fn bind(resource: &Resource, client: Client, token: CancellationToken)
     let default_namespace = client.default_namespace();
     let namespace = resource.namespace.as_deref().unwrap_or(default_namespace);
 
+    let mut set = JoinSet::new();
     let api = Api::<Pod>::namespaced(client.clone(), namespace);
     let api_ptr = Arc::new(api.clone());
     let selector = select(client.clone(), &resource.selector, namespace).await?;
@@ -103,9 +104,7 @@ pub async fn bind(resource: &Resource, client: Client, token: CancellationToken)
         .clone()
         .unwrap_or(SelectorPolicy::RoundRobin);
 
-    let watcher = watcher::PodWatcher::new(api, selector, policy, token.child_token()).await?;
-
-    let mut set = JoinSet::new();
+    let watcher = watcher::PodWatcher::new(api, selector, policy).await?;
 
     loop {
         debug!("Current connections: {}", set.len());
@@ -117,8 +116,11 @@ pub async fn bind(resource: &Resource, client: Client, token: CancellationToken)
                 let api = api_ptr.clone();
                 let token = token.child_token();
 
-                // TODO: this doesn't get cancelled
-                let pod = watcher.next().await?;
+                let pod = match watcher.get() {
+                    Some(pod) => pod,
+                    None => token.run_until_cancelled(watcher.next()).await.transpose()?.context("Failed to get next pod")?,
+                };
+
                 let pod_name = pod.name_any();
                 let pod_port = resource.ports.remote;
 
@@ -137,6 +139,8 @@ pub async fn bind(resource: &Resource, client: Client, token: CancellationToken)
             else => break,
         }
     }
+
+    watcher.abort();
 
     set.join_all().await;
 

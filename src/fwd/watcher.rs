@@ -19,39 +19,33 @@ use kube::{
         watcher::{self},
     },
 };
-use tokio_util::sync::CancellationToken;
-use tracing::{debug, info};
+use tokio::task::JoinHandle;
+use tracing::debug;
 
 use crate::cnf::schema::SelectorPolicy;
 
-#[derive(Clone)]
 pub struct PodWatcher {
     store: Store<PartialObjectMeta<Pod>>,
     subscriber: ReflectHandle<PartialObjectMeta<Pod>>,
     counter: Arc<AtomicUsize>,
     policy: SelectorPolicy,
+    handle: JoinHandle<()>,
 }
 
 impl PodWatcher {
-    pub async fn new(
-        api: Api<Pod>,
-        selector: Selector,
-        policy: SelectorPolicy,
-        token: CancellationToken,
-    ) -> Result<Self> {
+    pub async fn new(api: Api<Pod>, selector: Selector, policy: SelectorPolicy) -> Result<Self> {
         let config = watcher::Config::default().labels_from(&selector);
 
         let (store, writer) = reflector::store_shared(256);
 
         let subscriber = writer.subscribe().context("Failed to create subscriber")?;
 
-        tokio::spawn(async move {
+        let handle = tokio::spawn(async move {
             watcher::metadata_watcher(api, config)
                 .reflect(writer)
                 .default_backoff()
                 .applied_objects()
                 .predicate_filter(predicates::labels)
-                .take_until(token.cancelled())
                 .for_each(|_| ready(()))
                 .await;
         });
@@ -66,29 +60,33 @@ impl PodWatcher {
             subscriber,
             counter: Arc::new(AtomicUsize::new(0)),
             policy,
+            handle,
         })
     }
 
-    pub async fn next(&self) -> Result<Arc<PartialObjectMeta<Pod>>> {
-        if !self.store.is_empty() {
-            let state = self.store.state();
-            let counter = match self.policy {
-                SelectorPolicy::Sticky => self.counter.load(Ordering::Relaxed),
-                SelectorPolicy::RoundRobin => self.counter.fetch_add(1, Ordering::Relaxed),
-            };
+    pub fn abort(&self) {
+        self.handle.abort();
+    }
 
-            let index = counter % state.len();
-
-            debug!("Selecting pod {} of {}", index, state.len());
-
-            return Ok(state
-                .get(index)
-                .context("Cannot get next load balanced pod")?
-                .clone());
+    pub fn get(&self) -> Option<Arc<PartialObjectMeta<Pod>>> {
+        if self.store.is_empty() {
+            return None;
         }
 
-        info!("No pods found, waiting for next one");
+        let state = self.store.state();
+        let counter = match self.policy {
+            SelectorPolicy::Sticky => self.counter.load(Ordering::Relaxed),
+            SelectorPolicy::RoundRobin => self.counter.fetch_add(1, Ordering::Relaxed),
+        };
 
+        let index = counter % state.len();
+
+        debug!("Selecting pod {} of {}", index, state.len());
+
+        return state.get(index).cloned();
+    }
+
+    pub async fn next(&self) -> Result<Arc<PartialObjectMeta<Pod>>> {
         self.subscriber
             .clone()
             .next()
