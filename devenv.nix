@@ -14,6 +14,7 @@
 
   packages = [
     pkgs.cargo-make
+    pkgs.cargo-edit
   ];
 
   languages.rust.enable = true;
