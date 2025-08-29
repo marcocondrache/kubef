@@ -83,7 +83,7 @@ impl PodWatcher {
 
         debug!("Selecting pod {} of {}", index, state.len());
 
-        return state.get(index).cloned();
+        state.get(index).cloned()
     }
 
     pub async fn next(&self) -> Result<Arc<PartialObjectMeta<Pod>>> {
