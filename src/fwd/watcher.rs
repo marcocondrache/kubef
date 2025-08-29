@@ -7,7 +7,7 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use futures::{StreamExt, future::ready};
+use futures_lite::StreamExt;
 use k8s_openapi::api::core::v1::Pod;
 use kube::{
     Api,
@@ -46,7 +46,7 @@ impl PodWatcher {
                 .default_backoff()
                 .applied_objects()
                 .predicate_filter(predicates::labels)
-                .for_each(|_| ready(()))
+                .for_each(|_| ())
                 .await;
         });
 

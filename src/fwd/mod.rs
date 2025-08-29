@@ -82,7 +82,6 @@ pub async fn spawn(
 
 #[instrument(skip(client, token), fields(resource = %resource.alias))]
 pub async fn bind(resource: &Resource, client: Client, token: CancellationToken) -> Result<()> {
-    // TODO: How to handle IPv6?
     let addr = SocketAddr::from((Ipv4Addr::LOCALHOST, resource.ports.local));
     let server = TcpListener::bind(addr).await?;
 
@@ -216,7 +215,7 @@ pub async fn select(
             let api: Api<Deployment> = Api::namespaced(client, namespace);
             let deployment = api.get(name).await?;
             let selector = deployment.spec.context("Deployment has no spec")?.selector;
-            // TODO: Handle match expressions
+
             let result = selector
                 .match_labels
                 .context("Deployment has no selector")?

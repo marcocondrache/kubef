@@ -23,12 +23,10 @@ A fast, intelligent Kubernetes port forwarding tool with configuration-based res
 ### From source
 
 ```bash
-git clone <repository-url>
-cd kubef
-cargo build --release
-```
+git clone <repository-url> && cd kubef
 
-The binary will be available at `target/release/kubef`.
+cargo install --path . --root ~/.local
+```
 
 ## Configuration
 
