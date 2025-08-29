@@ -25,7 +25,7 @@ pub struct Resource {
 #[serde(deny_unknown_fields)]
 pub struct Ports {
     pub remote: u16,
-    pub local: u16,
+    pub local: Option<u16>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, JsonSchema)]

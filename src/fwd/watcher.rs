@@ -64,7 +64,7 @@ impl PodWatcher {
         })
     }
 
-    pub fn abort(&self) {
+    pub fn shutdown(&self) {
         self.handle.abort();
     }
 

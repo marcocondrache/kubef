@@ -18,11 +18,11 @@ use kube::{
     core::{Expression, Selector},
 };
 use tokio::{
-    net::{TcpListener, TcpStream},
+    net::{TcpSocket, TcpStream},
     task::JoinSet,
 };
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, error, info, instrument};
+use tracing::{debug, error, info, instrument, warn};
 
 mod pool;
 mod watcher;
@@ -82,8 +82,14 @@ pub async fn spawn(
 
 #[instrument(skip(client, token), fields(resource = %resource.alias))]
 pub async fn bind(resource: &Resource, client: Client, token: CancellationToken) -> Result<()> {
-    let addr = SocketAddr::from((Ipv4Addr::LOCALHOST, resource.ports.local));
-    let server = TcpListener::bind(addr).await?;
+    let addr = SocketAddr::from((Ipv4Addr::LOCALHOST, resource.ports.local.unwrap_or(0)));
+    let socket = TcpSocket::new_v4()?;
+
+    socket.set_reuseaddr(true)?;
+    socket.set_keepalive(true)?;
+    socket.bind(addr)?;
+
+    let server = socket.listen(1024)?;
 
     info!(
         "Listening TCP on {} forwarded to {}",
@@ -131,7 +137,7 @@ pub async fn bind(resource: &Resource, client: Client, token: CancellationToken)
 
                 set.spawn(async move {
                     if let Err(e) = forward(api, pod_port, pod_name, connection, token).await {
-                        error!("Error forwarding: {}", e);
+                        warn!("Error forwarding: {}", e);
                     }
                 });
             }
@@ -139,9 +145,8 @@ pub async fn bind(resource: &Resource, client: Client, token: CancellationToken)
         }
     }
 
-    watcher.abort();
-
-    set.join_all().await;
+    watcher.shutdown();
+    set.shutdown().await;
 
     Ok(())
 }
@@ -187,7 +192,7 @@ pub async fn forward(
         }
     };
 
-    debug!("Connection closed, bye {}!", pod_name);
+    debug!("Going to gracefully drop upstream connection");
 
     drop(upstream);
 
