@@ -2,6 +2,14 @@
 name = "kubef"
 version = "1.2.8"
 edition = "2024"
+license = "MIT"
+readme = "README.md"
+homepage = "https://github.com/marcocondrache/kubef"
+repository = "https://github.com/marcocondrache/kubef"
+categories = ["networking", "k8s", "kubernetes"]
+authors = [
+    "Marco Mihai Condrache <52580954+marcocondrache@users.noreply.github.com>",
+]
 
 [dependencies]
 futures-lite = "2.6.1"
