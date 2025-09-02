@@ -40,15 +40,14 @@ impl PodWatcher {
 
         let subscriber = writer.subscribe().context("Failed to create subscriber")?;
 
-        let handle = tokio::spawn(async move {
+        let handle = tokio::spawn(
             watcher::metadata_watcher(api, config)
                 .reflect(writer)
                 .default_backoff()
                 .applied_objects()
                 .predicate_filter(predicates::labels)
-                .for_each(|_| ())
-                .await;
-        });
+                .for_each(|_| ()),
+        );
 
         tokio::time::timeout(Duration::from_secs(10), store.wait_until_ready())
             .await
