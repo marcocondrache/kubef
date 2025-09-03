@@ -85,11 +85,7 @@ impl PodWatcher {
         state.get(index).cloned()
     }
 
-    pub async fn next(&self) -> Result<Arc<PartialObjectMeta<Pod>>> {
-        self.subscriber
-            .clone()
-            .next()
-            .await
-            .context("Cannot get next pod")
+    pub async fn next(&mut self) -> Result<Arc<PartialObjectMeta<Pod>>> {
+        self.subscriber.next().await.context("Cannot get next pod")
     }
 }

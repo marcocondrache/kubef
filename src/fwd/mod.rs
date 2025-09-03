@@ -87,6 +87,7 @@ pub async fn bind(resource: &Resource, client: Client, token: CancellationToken)
 
     socket.set_reuseaddr(true)?;
     socket.set_keepalive(true)?;
+    socket.set_nodelay(true)?;
     socket.bind(addr)?;
 
     let server = socket.listen(1024)?;
@@ -109,7 +110,7 @@ pub async fn bind(resource: &Resource, client: Client, token: CancellationToken)
         .clone()
         .unwrap_or(SelectorPolicy::RoundRobin);
 
-    let watcher = watcher::PodWatcher::new(api, selector, policy).await?;
+    let mut watcher = watcher::PodWatcher::new(api, selector, policy).await?;
 
     loop {
         debug!("Current connections: {}", set.len());
