@@ -19,7 +19,7 @@ use kube::{
 };
 use tokio::net::{TcpSocket, TcpStream};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
-use tracing::{Level, debug, info, instrument, warn};
+use tracing::{Level, debug, info, instrument};
 
 mod pool;
 mod watcher;
@@ -70,7 +70,7 @@ pub async fn spawn(
     Ok(())
 }
 
-#[instrument(skip(client, token), fields(resource = %resource.alias))]
+#[instrument(err, skip(client, token), fields(resource = %resource.alias))]
 pub async fn bind(resource: &Resource, client: Client, token: CancellationToken) -> Result<()> {
     let addr = SocketAddr::from((Ipv4Addr::LOCALHOST, resource.ports.local.unwrap_or(0)));
     let socket = TcpSocket::new_v4()?;
