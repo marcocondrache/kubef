@@ -19,7 +19,7 @@ use kube::{
 };
 use tokio::net::{TcpSocket, TcpStream};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
-use tracing::{debug, info, instrument, warn};
+use tracing::{Level, debug, info, instrument, warn};
 
 mod pool;
 mod watcher;
@@ -126,11 +126,7 @@ pub async fn bind(resource: &Resource, client: Client, token: CancellationToken)
                     pod_name
                 );
 
-                tracker.spawn(async move {
-                    if let Err(e) = forward(api, pod_port, pod_name, connection, token).await {
-                        warn!("{}", e);
-                    }
-                });
+                tracker.spawn(forward(api, pod_port, pod_name, connection, token));
             }
             else => break,
         }
@@ -144,7 +140,7 @@ pub async fn bind(resource: &Resource, client: Client, token: CancellationToken)
     Ok(())
 }
 
-#[instrument(skip(api, connection, token))]
+#[instrument(err(level = Level::WARN), skip(api, connection, token))]
 pub async fn forward(
     api: Arc<Api<Pod>>,
     pod_port: u16,
