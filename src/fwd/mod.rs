@@ -17,12 +17,9 @@ use kube::{
     Api, Client, ResourceExt,
     core::{Expression, Selector},
 };
-use tokio::{
-    net::{TcpSocket, TcpStream},
-    task::JoinSet,
-};
-use tokio_util::sync::CancellationToken;
-use tracing::{debug, error, info, instrument, warn};
+use tokio::net::{TcpSocket, TcpStream};
+use tokio_util::{sync::CancellationToken, task::TaskTracker};
+use tracing::{debug, info, instrument, warn};
 
 mod pool;
 mod watcher;
@@ -31,33 +28,26 @@ pub type Target<'a> = Either<&'a Resource, &'a Vec<Resource>>;
 
 pub async fn init(target: Target<'static>, context: Option<&str>) -> Result<()> {
     let token = CancellationToken::new();
-    let mut set = JoinSet::new();
+    let tracker = TaskTracker::new();
     let mut pool = ClientPool::new().await?;
 
     match target {
         Either::Left(resource) => {
-            spawn(resource, &mut set, &mut pool, context, token.child_token()).await?;
+            spawn(resource, &tracker, &mut pool, context, token.child_token()).await?;
         }
         Either::Right(resources) => {
             for resource in resources {
-                spawn(resource, &mut set, &mut pool, context, token.child_token()).await?;
+                spawn(resource, &tracker, &mut pool, context, token.child_token()).await?;
             }
         }
     }
 
-    tokio::select! {
-        biased;
-        _ = tokio::signal::ctrl_c() => {},
-        results = set.join_all() => {
-            for result in results {
-                if let Err(e) = result {
-                    error!("Error: {}", e);
-                }
-            }
-        }
-    };
+    tokio::signal::ctrl_c().await?;
 
+    tracker.close();
     token.cancel();
+
+    tracker.wait().await;
 
     Ok(())
 }
@@ -65,7 +55,7 @@ pub async fn init(target: Target<'static>, context: Option<&str>) -> Result<()> 
 #[inline]
 pub async fn spawn(
     resource: &'static Resource,
-    set: &mut JoinSet<Result<()>>,
+    tracker: &TaskTracker,
     pool: &mut ClientPool,
     context: Option<&str>,
     token: CancellationToken,
@@ -75,7 +65,7 @@ pub async fn spawn(
         _ => pool.default(),
     };
 
-    set.spawn(bind(resource, client, token));
+    tracker.spawn(bind(resource, client, token));
 
     Ok(())
 }
@@ -101,7 +91,7 @@ pub async fn bind(resource: &Resource, client: Client, token: CancellationToken)
     let default_namespace = client.default_namespace();
     let namespace = resource.namespace.as_deref().unwrap_or(default_namespace);
 
-    let mut set = JoinSet::new();
+    let tracker = TaskTracker::new();
     let api = Api::<Pod>::namespaced(client.clone(), namespace);
     let api_ptr = Arc::new(api.clone());
     let selector = select(client.clone(), &resource.selector, namespace).await?;
@@ -113,7 +103,7 @@ pub async fn bind(resource: &Resource, client: Client, token: CancellationToken)
     let mut watcher = watcher::PodWatcher::new(api, selector, policy).await?;
 
     loop {
-        debug!("Current connections: {}", set.len());
+        debug!("Current connections: {}", tracker.len());
 
         tokio::select! {
             biased;
@@ -136,9 +126,9 @@ pub async fn bind(resource: &Resource, client: Client, token: CancellationToken)
                     pod_name
                 );
 
-                set.spawn(async move {
+                tracker.spawn(async move {
                     if let Err(e) = forward(api, pod_port, pod_name, connection, token).await {
-                        warn!("Error forwarding: {}", e);
+                        warn!("{}", e);
                     }
                 });
             }
@@ -147,7 +137,9 @@ pub async fn bind(resource: &Resource, client: Client, token: CancellationToken)
     }
 
     watcher.shutdown();
-    set.shutdown().await;
+
+    tracker.close();
+    tracker.wait().await;
 
     Ok(())
 }
