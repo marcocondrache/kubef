@@ -21,12 +21,12 @@ xdg = "3.0.0"
 
 serde = { version = "1.0.219", features = ["derive"] }
 serde_yml = { version = "0.0.12" }
-clap = { version = "4.5.46", features = ["derive"] }
+clap = { version = "4.5.47", features = ["derive"] }
 tokio = { version = "1.47.1", features = ["full"] }
 tokio-util = { version = "0.7.16", features = ["rt"] }
-tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
-k8s-openapi = { version = "0.25.0", features = ["latest"] }
-kube = { version = "1.1.0", features = [
+tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
+k8s-openapi = { version = "0.26.0", features = ["latest"] }
+kube = { version = "2.0.0", features = [
     "runtime",
     "ws",
     "gzip",
