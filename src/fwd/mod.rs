@@ -238,6 +238,24 @@ pub async fn select(
 
             Ok(result)
         }
+        ResourceSelector::Hostname(name) => {
+            let service_name = name
+                .split('.')
+                .next()
+                .context("Hostname has no service name")?;
+
+            let api: Api<Service> = Api::namespaced(client, namespace);
+            let service = api.get(service_name).await?;
+            let selector = service.spec.context("Service has no spec")?.selector;
+
+            let result = selector
+                .context("Service has no selector")?
+                .into_iter()
+                .map(|(k, v)| Expression::In(k, [v].into()))
+                .collect::<Selector>();
+
+            Ok(result)
+        }
         ResourceSelector::Service(name) => {
             let api: Api<Service> = Api::namespaced(client, namespace);
             let service = api.get(name).await?;
