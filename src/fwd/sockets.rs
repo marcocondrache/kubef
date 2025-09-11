@@ -4,24 +4,39 @@ use tokio::net::TcpSocket;
 #[cfg(target_os = "macos")]
 use tracing::instrument;
 
-use ipnet::{IpAddrRange, IpNet, Ipv4Net};
+use ipnet::{IpAddrRange, IpNet};
+
+pub struct LoopbackToken {
+    inner: IpAddr,
+}
+
+impl LoopbackToken {
+    pub async fn new(address: IpAddr) -> Result<Self> {
+        SocketPool::ensure_loopback(address).await?;
+
+        Ok(Self { inner: address })
+    }
+
+    pub fn get_loopback(&self) -> IpAddr {
+        self.inner.clone()
+    }
+}
+
+impl Drop for LoopbackToken {
+    fn drop(&mut self) {
+        if cfg!(target_os = "macos") {
+            tokio::spawn(SocketPool::drop_loopback(self.inner));
+        }
+    }
+}
 
 pub struct SocketPool {
-    loopback: IpNet,
     pool: Option<IpAddrRange>,
 }
 
 impl Default for SocketPool {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-impl Drop for SocketPool {
-    fn drop(&mut self) {
-        if cfg!(target_os = "macos") && self.pool.is_some() {
-            tokio::spawn(Self::drop_loopback(self.loopback));
-        }
     }
 }
 
@@ -37,15 +52,15 @@ impl SocketPool {
     }
 
     #[cfg(target_os = "macos")]
-    #[instrument(skip(subnet))]
-    async fn ensure_loopback(subnet: IpNet) -> Result<()> {
+    #[instrument(skip(address))]
+    async fn ensure_loopback(address: IpAddr) -> Result<()> {
         use tokio::process::Command;
         use tracing::debug;
 
-        debug!("Ensuring loopback: {}", subnet.to_string());
+        debug!("Ensuring loopback: {}", address.to_string());
 
         let exit = Command::new("/sbin/ifconfig")
-            .args(["lo0", "alias", &subnet.to_string()])
+            .args(["lo0", "alias", &address.to_string()])
             .status()
             .await?;
 
@@ -55,12 +70,12 @@ impl SocketPool {
     }
 
     #[cfg(target_os = "macos")]
-    #[instrument(skip(subnet))]
-    async fn drop_loopback(subnet: IpNet) -> Result<()> {
+    #[instrument(skip(address))]
+    async fn drop_loopback(address: IpAddr) -> Result<()> {
         use tokio::process::Command;
 
         let exit = Command::new("/sbin/ifconfig")
-            .args(["lo0", "-alias", &subnet.to_string()])
+            .args(["lo0", "-alias", &address.to_string()])
             .status()
             .await?;
 
@@ -70,42 +85,36 @@ impl SocketPool {
     }
 
     #[cfg(not(target_os = "macos"))]
-    async fn ensure_loopback(subnet: IpNet) -> Result<()> {
+    async fn ensure_loopback(address: IpAddr) -> Result<()> {
         Ok(())
     }
 
     #[cfg(not(target_os = "macos"))]
-    async fn drop_loopback(subnet: IpNet) -> Result<()> {
+    async fn drop_loopback(address: IpAddr) -> Result<()> {
         Ok(())
     }
 }
 
 impl SocketPool {
     pub fn new() -> Self {
-        let net = IpNet::V4(Ipv4Net::new(Ipv4Addr::LOCALHOST, 32).unwrap());
-
-        Self {
-            loopback: net,
-            pool: None,
-        }
+        Self { pool: None }
     }
 
     pub async fn new_with_loopback(net: IpNet) -> Result<Self> {
-        Self::ensure_loopback(net).await?;
-
         Ok(Self {
-            loopback: net,
             pool: Some(net.hosts()),
         })
     }
 
-    pub fn get_loopback(&mut self, port: Option<u16>) -> Result<(TcpSocket, IpAddr)> {
+    pub async fn get_loopback(&mut self, port: Option<u16>) -> Result<(TcpSocket, LoopbackToken)> {
         let loopback = match self.pool {
             Some(mut pool) => pool
                 .next()
                 .context("No more loopback addresses available")?,
             None => Ipv4Addr::LOCALHOST.into(),
         };
+
+        let reservation = LoopbackToken::new(loopback).await?;
 
         let address = SocketAddr::from((loopback, port.unwrap_or(0)));
         let socket = match loopback {
@@ -115,6 +124,6 @@ impl SocketPool {
 
         Self::bind(&socket, address)?;
 
-        Ok((socket, loopback))
+        Ok((socket, reservation))
     }
 }

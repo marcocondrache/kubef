@@ -2,7 +2,10 @@ use std::{net::IpAddr, sync::Arc};
 
 use crate::{
     cnf::schema::{Resource, ResourceSelector, SelectorPolicy},
-    fwd::{clients::ClientPool, sockets::SocketPool},
+    fwd::{
+        clients::ClientPool,
+        sockets::{LoopbackToken, SocketPool},
+    },
 };
 use anyhow::{Context, Result};
 use either::Either;
@@ -58,10 +61,16 @@ impl<'a> Forwarder<'a> {
             _ => self.pool.default(),
         };
 
-        let (socket, loopback) = self.sockets.get_loopback(resource.ports.local)?;
+        let (socket, reservation) = self.sockets.get_loopback(resource.ports.local).await?;
+        let loopback = reservation.get_loopback();
 
-        self.tracker
-            .spawn(bind(socket, resource, client, self.token.child_token()));
+        self.tracker.spawn(bind(
+            socket,
+            resource,
+            client,
+            self.token.child_token(),
+            reservation,
+        ));
 
         Ok(loopback)
     }
@@ -75,12 +84,13 @@ impl<'a> Forwarder<'a> {
     }
 }
 
-#[instrument(err, skip(client, token), fields(resource = %resource.alias))]
+#[instrument(err, skip(client, token, loopback), fields(resource = %resource.alias))]
 pub async fn bind(
     socket: TcpSocket,
     resource: &Resource,
     client: Client,
     token: CancellationToken,
+    loopback: LoopbackToken,
 ) -> Result<()> {
     let server = socket.listen(1024)?;
 
@@ -137,6 +147,8 @@ pub async fn bind(
 
     tracker.close();
     tracker.wait().await;
+
+    drop(loopback);
 
     Ok(())
 }
