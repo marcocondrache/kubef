@@ -4,7 +4,7 @@ use either::Either;
 
 use crate::{
     cnf::{self},
-    fwd::{self, Target},
+    fwd::{Forwarder, Target},
 };
 
 #[derive(Args)]
@@ -28,7 +28,15 @@ pub async fn init(
         _ => None,
     };
 
-    fwd::init(resources, context).await
+    let mut forwarder = Forwarder::new(context, config.loopback).await?;
+
+    forwarder.forward(resources).await?;
+
+    tokio::signal::ctrl_c().await?;
+
+    forwarder.shutdown().await?;
+
+    Ok(())
 }
 
 fn get_target<'a>(config: &'a cnf::schema::Config, target: &str) -> Result<Target<'a>> {

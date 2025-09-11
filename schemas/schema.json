@@ -17,11 +17,15 @@
           "$ref": "#/$defs/Resource"
         }
       }
+    },
+    "loopback": {
+      "type": "string"
     }
   },
   "additionalProperties": false,
   "required": [
-    "groups"
+    "groups",
+    "loopback"
   ],
   "$defs": {
     "Ports": {
@@ -55,6 +59,12 @@
           "type": "string"
         },
         "context": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "hostname": {
           "type": [
             "string",
             "null"

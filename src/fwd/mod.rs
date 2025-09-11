@@ -1,14 +1,12 @@
-use std::{
-    net::{Ipv4Addr, SocketAddr},
-    sync::Arc,
-};
+use std::sync::Arc;
 
 use crate::{
     cnf::schema::{Resource, ResourceSelector, SelectorPolicy},
-    fwd::pool::ClientPool,
+    fwd::{clients::ClientPool, sockets::SocketPool},
 };
 use anyhow::{Context, Result};
 use either::Either;
+use ipnet::IpNet;
 use k8s_openapi::api::{
     apps::v1::Deployment,
     core::v1::{Pod, Service},
@@ -21,65 +19,86 @@ use tokio::net::{TcpSocket, TcpStream};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 use tracing::{Level, debug, info, instrument};
 
-mod pool;
+mod clients;
+mod sockets;
 mod watcher;
 
 pub type Target<'a> = Either<&'a Resource, &'a Vec<Resource>>;
 
-pub async fn init(target: Target<'static>, context: Option<&str>) -> Result<()> {
-    let token = CancellationToken::new();
-    let tracker = TaskTracker::new();
-    let mut pool = ClientPool::new().await?;
-
-    match target {
-        Either::Left(resource) => {
-            spawn(resource, &tracker, &mut pool, context, token.child_token()).await?;
-        }
-        Either::Right(resources) => {
-            for resource in resources {
-                spawn(resource, &tracker, &mut pool, context, token.child_token()).await?;
-            }
-        }
-    }
-
-    tokio::signal::ctrl_c().await?;
-
-    tracker.close();
-    token.cancel();
-
-    tracker.wait().await;
-
-    Ok(())
+pub struct Forwarder<'a> {
+    pool: ClientPool,
+    sockets: SocketPool,
+    tracker: TaskTracker,
+    token: CancellationToken,
+    context: Option<&'a str>,
 }
 
-#[inline]
-pub async fn spawn(
-    resource: &'static Resource,
-    tracker: &TaskTracker,
-    pool: &mut ClientPool,
-    context: Option<&str>,
-    token: CancellationToken,
-) -> Result<()> {
-    let client = match (resource.context.as_deref(), context) {
-        (Some(context), _) | (_, Some(context)) => pool.get_or_insert(context).await?,
-        _ => pool.default(),
-    };
+impl Forwarder<'_> {
+    async fn spawn(&mut self, resource: &'static Resource) -> Result<()> {
+        let client = match (resource.context.as_deref(), self.context) {
+            (Some(context), _) | (_, Some(context)) => self.pool.get_or_insert(context).await?,
+            _ => self.pool.default(),
+        };
 
-    tracker.spawn(bind(resource, client, token));
+        let socket = self.sockets.get_loopback(resource.ports.local)?;
 
-    Ok(())
+        self.tracker
+            .spawn(bind(socket, resource, client, self.token.child_token()));
+
+        Ok(())
+    }
+}
+
+impl<'a> Forwarder<'a> {
+    pub async fn new(context: Option<&'a str>, loopback: Option<IpNet>) -> Result<Self> {
+        let token = CancellationToken::new();
+        let tracker = TaskTracker::new();
+        let pool = ClientPool::new().await?;
+        let sockets = match loopback {
+            Some(net) => SocketPool::new_with_loopback(net).await?,
+            None => SocketPool::new(),
+        };
+
+        Ok(Self {
+            pool,
+            sockets,
+            tracker,
+            token,
+            context,
+        })
+    }
+
+    pub async fn forward(&mut self, target: Target<'static>) -> Result<()> {
+        match target {
+            Either::Left(resource) => {
+                self.spawn(resource).await?;
+            }
+            Either::Right(resources) => {
+                for resource in resources {
+                    self.spawn(resource).await?;
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    pub async fn shutdown(&mut self) -> Result<()> {
+        self.token.cancel();
+        self.tracker.close();
+        self.tracker.wait().await;
+
+        Ok(())
+    }
 }
 
 #[instrument(err, skip(client, token), fields(resource = %resource.alias))]
-pub async fn bind(resource: &Resource, client: Client, token: CancellationToken) -> Result<()> {
-    let addr = SocketAddr::from((Ipv4Addr::LOCALHOST, resource.ports.local.unwrap_or(0)));
-    let socket = TcpSocket::new_v4()?;
-
-    socket.set_reuseaddr(true)?;
-    socket.set_keepalive(true)?;
-    socket.set_nodelay(true)?;
-    socket.bind(addr)?;
-
+pub async fn bind(
+    socket: TcpSocket,
+    resource: &Resource,
+    client: Client,
+    token: CancellationToken,
+) -> Result<()> {
     let server = socket.listen(1024)?;
 
     info!(

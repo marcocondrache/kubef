@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use ipnet::IpNet;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -8,6 +9,8 @@ use serde::{Deserialize, Serialize};
 pub struct Config {
     pub context: Option<String>,
     pub groups: HashMap<String, Vec<Resource>>,
+    #[schemars(with = "String")]
+    pub loopback: Option<IpNet>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, JsonSchema)]
@@ -16,6 +19,7 @@ pub struct Resource {
     pub namespace: Option<String>,
     pub context: Option<String>,
     pub policy: Option<SelectorPolicy>,
+    pub hostname: Option<String>,
     pub selector: ResourceSelector,
     pub alias: String,
     pub ports: Ports,
