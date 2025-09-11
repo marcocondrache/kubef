@@ -11,7 +11,10 @@ use hickory_server::{
     server::ServerFuture as HickoryServer,
     store::in_memory::InMemoryAuthority,
 };
-use tokio::net::UdpSocket;
+use tokio::{
+    fs::{self},
+    net::UdpSocket,
+};
 use tracing::debug;
 
 pub struct DnsResolver {
@@ -21,12 +24,21 @@ pub struct DnsResolver {
 }
 
 impl DnsResolver {
+    pub const ORIGIN: &str = "svc.";
+
     pub fn new() -> Result<Self> {
         // TODO: should be configurable?
-        let origin = Name::from_str("svc.")?;
+        let origin = Name::from_str(Self::ORIGIN)?;
         let authority = InMemoryAuthority::empty(origin.clone(), ZoneType::Primary, false);
 
         Ok(Self { authority, origin })
+    }
+
+    pub async fn os_resolver(&self) -> Result<()> {
+        fs::create_dir_all("/etc/resolver/svc").await?;
+        fs::write("/etc/resolver/svc/resolver.conf", b"nameserver 127.0.0.1").await?;
+
+        Ok(())
     }
 
     pub async fn add_record(&mut self, fqdn: String, addr: IpAddr) -> Result<()> {
@@ -46,6 +58,8 @@ impl DnsResolver {
     }
 
     pub async fn serve(self) -> Result<()> {
+        self.os_resolver().await?;
+
         let mut catalog = Catalog::new();
 
         catalog.upsert(self.origin.into(), vec![Arc::new(self.authority)]);

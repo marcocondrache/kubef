@@ -36,14 +36,24 @@ pub async fn init(
     match resources {
         Either::Left(resource) => {
             let loopback = forwarder.forward(resource).await?;
-            let fqdn = format!("{}.{}.svc.", resource.alias, resource.namespace);
+            let fqdn = format!(
+                "{}.{}.{}",
+                resource.alias,
+                resource.namespace,
+                DnsResolver::ORIGIN
+            );
 
             resolver.add_record(fqdn, loopback).await?;
         }
         Either::Right(resources) => {
             for resource in resources {
                 let loopback = forwarder.forward(resource).await?;
-                let fqdn = format!("{}.{}.svc.", resource.alias, resource.namespace);
+                let fqdn = format!(
+                    "{}.{}.{}",
+                    resource.alias,
+                    resource.namespace,
+                    DnsResolver::ORIGIN
+                );
 
                 resolver.add_record(fqdn, loopback).await?;
             }

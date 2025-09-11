@@ -1,5 +1,5 @@
 use anyhow::{Context, Ok, Result};
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use tokio::net::TcpSocket;
 #[cfg(target_os = "macos")]
 use tracing::instrument;
@@ -12,7 +12,10 @@ pub struct LoopbackToken {
 
 impl LoopbackToken {
     pub async fn new(address: IpAddr) -> Result<Self> {
-        SocketPool::ensure_loopback(address).await?;
+        if address != IpAddr::V4(Ipv4Addr::LOCALHOST) && address != IpAddr::V6(Ipv6Addr::LOCALHOST)
+        {
+            SocketPool::ensure_loopback(address).await?;
+        }
 
         Ok(Self { inner: address })
     }
@@ -114,7 +117,7 @@ impl SocketPool {
             None => Ipv4Addr::LOCALHOST.into(),
         };
 
-        let reservation = LoopbackToken::new(loopback).await?;
+        let token = LoopbackToken::new(loopback).await?;
 
         let address = SocketAddr::from((loopback, port.unwrap_or(0)));
         let socket = match loopback {
@@ -124,6 +127,6 @@ impl SocketPool {
 
         Self::bind(&socket, address)?;
 
-        Ok((socket, reservation))
+        Ok((socket, token))
     }
 }
