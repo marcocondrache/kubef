@@ -1,9 +1,11 @@
 use anyhow::Result;
 use clap::Args;
 use either::Either;
+use tracing::{debug, error};
 
 use crate::{
     cnf::{self},
+    dns::DnsResolver,
     fwd::{Forwarder, Target},
 };
 
@@ -28,11 +30,33 @@ pub async fn init(
         _ => None,
     };
 
+    let mut resolver = DnsResolver::new()?;
     let mut forwarder = Forwarder::new(context, config.loopback).await?;
 
-    forwarder.forward(resources).await?;
+    match resources {
+        Either::Left(resource) => {
+            let loopback = forwarder.forward(resource).await?;
+            let fqdn = format!("{}.{}.svc.", resource.alias, resource.namespace);
 
-    tokio::signal::ctrl_c().await?;
+            resolver.add_record(fqdn, loopback).await?;
+        }
+        Either::Right(resources) => {
+            for resource in resources {
+                let loopback = forwarder.forward(resource).await?;
+                let fqdn = format!("{}.{}.svc.", resource.alias, resource.namespace);
+
+                resolver.add_record(fqdn, loopback).await?;
+            }
+        }
+    }
+
+    tokio::select! {
+        biased;
+        _ = tokio::signal::ctrl_c() => {}
+        Err(e) = resolver.serve() => {
+            error!("DNS server stopped with error: {}", e);
+        }
+    }
 
     forwarder.shutdown().await?;
 

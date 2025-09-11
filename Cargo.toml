@@ -13,7 +13,6 @@ authors = [
 
 [dependencies]
 hickory-server = "0.25.2"
-hickory-proto = "0.25.2"
 futures-lite = "2.6.1"
 either = "1.15.0"
 tracing = "0.1.41"

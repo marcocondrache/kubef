@@ -1,4 +1,7 @@
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    hash::{Hash, Hasher},
+};
 
 use ipnet::IpNet;
 use schemars::JsonSchema;
@@ -11,16 +14,18 @@ pub struct Config {
     pub groups: HashMap<String, Vec<Resource>>,
     #[schemars(with = "String")]
     pub loopback: Option<IpNet>,
+    #[serde(default)]
+    pub dns: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Resource {
-    pub namespace: Option<String>,
+    pub alias: String,
+    pub namespace: String,
     pub context: Option<String>,
     pub policy: Option<SelectorPolicy>,
     pub selector: ResourceSelector,
-    pub alias: String,
     pub ports: Ports,
 }
 

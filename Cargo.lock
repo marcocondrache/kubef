@@ -1211,7 +1211,6 @@ dependencies = [
  "clap",
  "either",
  "futures-lite",
- "hickory-proto",
  "hickory-server",
  "ipnet",
  "k8s-openapi",

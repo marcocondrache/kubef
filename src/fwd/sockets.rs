@@ -19,7 +19,7 @@ impl Default for SocketPool {
 
 impl Drop for SocketPool {
     fn drop(&mut self) {
-        if cfg!(target_os = "macos") {
+        if cfg!(target_os = "macos") && self.pool.is_some() {
             tokio::spawn(Self::drop_loopback(self.loopback));
         }
     }
@@ -40,6 +40,9 @@ impl SocketPool {
     #[instrument(skip(subnet))]
     async fn ensure_loopback(subnet: IpNet) -> Result<()> {
         use tokio::process::Command;
+        use tracing::debug;
+
+        debug!("Ensuring loopback: {}", subnet.to_string());
 
         let exit = Command::new("/sbin/ifconfig")
             .args(["lo0", "alias", &subnet.to_string()])
@@ -96,7 +99,7 @@ impl SocketPool {
         })
     }
 
-    pub fn get_loopback(&mut self, port: Option<u16>) -> Result<TcpSocket> {
+    pub fn get_loopback(&mut self, port: Option<u16>) -> Result<(TcpSocket, IpAddr)> {
         let loopback = match self.pool {
             Some(mut pool) => pool
                 .next()
@@ -112,6 +115,6 @@ impl SocketPool {
 
         Self::bind(&socket, address)?;
 
-        Ok(socket)
+        Ok((socket, loopback))
     }
 }

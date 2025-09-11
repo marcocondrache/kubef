@@ -9,6 +9,10 @@
         "null"
       ]
     },
+    "dns": {
+      "type": "boolean",
+      "default": false
+    },
     "groups": {
       "type": "object",
       "additionalProperties": {
@@ -65,10 +69,7 @@
           ]
         },
         "namespace": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": "string"
         },
         "policy": {
           "anyOf": [
@@ -89,8 +90,9 @@
       },
       "additionalProperties": false,
       "required": [
-        "selector",
         "alias",
+        "namespace",
+        "selector",
         "ports"
       ]
     },

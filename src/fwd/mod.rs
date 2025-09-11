@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{net::IpAddr, sync::Arc};
 
 use crate::{
     cnf::schema::{Resource, ResourceSelector, SelectorPolicy},
@@ -33,22 +33,6 @@ pub struct Forwarder<'a> {
     context: Option<&'a str>,
 }
 
-impl Forwarder<'_> {
-    async fn spawn(&mut self, resource: &'static Resource) -> Result<()> {
-        let client = match (resource.context.as_deref(), self.context) {
-            (Some(context), _) | (_, Some(context)) => self.pool.get_or_insert(context).await?,
-            _ => self.pool.default(),
-        };
-
-        let socket = self.sockets.get_loopback(resource.ports.local)?;
-
-        self.tracker
-            .spawn(bind(socket, resource, client, self.token.child_token()));
-
-        Ok(())
-    }
-}
-
 impl<'a> Forwarder<'a> {
     pub async fn new(context: Option<&'a str>, loopback: Option<IpNet>) -> Result<Self> {
         let token = CancellationToken::new();
@@ -68,19 +52,18 @@ impl<'a> Forwarder<'a> {
         })
     }
 
-    pub async fn forward(&mut self, target: Target<'static>) -> Result<()> {
-        match target {
-            Either::Left(resource) => {
-                self.spawn(resource).await?;
-            }
-            Either::Right(resources) => {
-                for resource in resources {
-                    self.spawn(resource).await?;
-                }
-            }
-        }
+    pub async fn forward(&mut self, resource: &'static Resource) -> Result<IpAddr> {
+        let client = match (resource.context.as_deref(), self.context) {
+            (Some(context), _) | (_, Some(context)) => self.pool.get_or_insert(context).await?,
+            _ => self.pool.default(),
+        };
 
-        Ok(())
+        let (socket, loopback) = self.sockets.get_loopback(resource.ports.local)?;
+
+        self.tracker
+            .spawn(bind(socket, resource, client, self.token.child_token()));
+
+        Ok(loopback)
     }
 
     pub async fn shutdown(&mut self) -> Result<()> {
@@ -107,8 +90,7 @@ pub async fn bind(
         resource.alias
     );
 
-    let default_namespace = client.default_namespace();
-    let namespace = resource.namespace.as_deref().unwrap_or(default_namespace);
+    let namespace = resource.namespace.as_str();
 
     let tracker = TaskTracker::new();
     let api = Api::<Pod>::namespaced(client.clone(), namespace);
