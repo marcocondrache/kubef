@@ -2,6 +2,7 @@ use std::process::ExitCode;
 
 mod cli;
 mod cnf;
+mod dns;
 mod env;
 mod fwd;
 

@@ -239,10 +239,7 @@ pub async fn select(
             Ok(result)
         }
         ResourceSelector::Hostname(name) => {
-            let service_name = name
-                .split('.')
-                .next()
-                .context("Hostname has no service name")?;
+            let service_name = name.split('.').next().unwrap_or(name);
 
             let api: Api<Service> = Api::namespaced(client, namespace);
             let service = api.get(service_name).await?;
