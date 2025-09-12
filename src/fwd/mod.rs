@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::{
-    cnf::schema::{Resource, ResourceSelector, SelectorPolicy},
+    cnf::schema::{Resource, ResourceSelector},
     fwd::{
         clients::ClientPool,
         sockets::{LoopbackToken, SocketPool},
@@ -58,7 +58,7 @@ impl<'ctx> Forwarder<'ctx> {
 
     pub fn with_loopback(self, loopback: Option<IpNet>) -> Self {
         Self {
-            sockets: self.sockets.with_loopback(loopback),
+            sockets: SocketPool::with_loopback(loopback),
             ..self
         }
     }
