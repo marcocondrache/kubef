@@ -24,7 +24,9 @@ pub async fn init(
     let resources = get_target(config, &target)?;
     let context = context.as_deref().or(config.context.as_deref());
 
-    let mut forwarder = Forwarder::new(context, config.loopback);
+    let mut forwarder = Forwarder::new()
+        .with_context(context)
+        .with_loopback(config.loopback);
 
     match resources {
         Either::Left(resource) => forwarder.forward(resource).await?,

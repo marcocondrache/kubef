@@ -37,18 +37,29 @@ pub struct Forwarder<'ctx> {
 }
 
 impl<'ctx> Forwarder<'ctx> {
-    pub fn new(context: Option<&'ctx str>, loopback: Option<IpNet>) -> Self {
+    pub fn new() -> Self {
         let token = CancellationToken::new();
         let tracker = TaskTracker::new();
         let pool = ClientPool::default();
-        let sockets = loopback.map(SocketPool::with_loopback).unwrap_or_default();
+        let sockets = SocketPool::default();
 
         Self {
             pool,
             sockets,
             tracker,
             token,
-            context,
+            context: None,
+        }
+    }
+
+    pub fn with_context(self, context: Option<&'ctx str>) -> Self {
+        Self { context, ..self }
+    }
+
+    pub fn with_loopback(self, loopback: Option<IpNet>) -> Self {
+        Self {
+            sockets: self.sockets.with_loopback(loopback),
+            ..self
         }
     }
 

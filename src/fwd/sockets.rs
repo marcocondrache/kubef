@@ -36,9 +36,9 @@ pub struct SocketPool {
 }
 
 impl SocketPool {
-    pub fn with_loopback(net: IpNet) -> Self {
+    pub fn with_loopback(self, net: Option<IpNet>) -> Self {
         Self {
-            pool: Some(net.hosts()),
+            pool: net.map(|net| net.hosts()),
         }
     }
 
