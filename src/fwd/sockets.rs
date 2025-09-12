@@ -1,5 +1,5 @@
 use anyhow::{Context, Ok, Result};
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use tokio::net::TcpSocket;
 #[cfg(target_os = "macos")]
 use tracing::instrument;
@@ -16,10 +16,7 @@ impl LoopbackToken {
             anyhow::bail!("Address is not a loopback address");
         }
 
-        if address != IpAddr::V4(Ipv4Addr::LOCALHOST) && address != IpAddr::V6(Ipv6Addr::LOCALHOST)
-        {
-            SocketPool::ensure_loopback(address).await?;
-        }
+        SocketPool::ensure_loopback(address).await?;
 
         Ok(Self { inner: address })
     }
@@ -45,15 +42,22 @@ impl SocketPool {
         }
     }
 
-    pub async fn get_loopback(&mut self, port: Option<u16>) -> Result<(TcpSocket, LoopbackToken)> {
-        let loopback = match self.pool {
-            Some(mut pool) => pool
-                .next()
-                .context("No more loopback addresses available")?,
-            None => Ipv4Addr::LOCALHOST.into(),
-        };
+    pub async fn get_loopback(
+        &mut self,
+        port: Option<u16>,
+    ) -> Result<(TcpSocket, Option<LoopbackToken>)> {
+        let (loopback, token) = match self.pool {
+            Some(mut pool) => {
+                let loopback = pool
+                    .next()
+                    .context("No more loopback addresses available")?;
 
-        let token = LoopbackToken::new(loopback).await?;
+                let token = LoopbackToken::new(loopback).await?;
+
+                (loopback, Some(token))
+            }
+            None => (Ipv4Addr::LOCALHOST.into(), None),
+        };
 
         let address = SocketAddr::from((loopback, port.unwrap_or(0)));
         let socket = match loopback {

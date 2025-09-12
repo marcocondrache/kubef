@@ -136,7 +136,7 @@ impl<'a> Forwarder<'a> {
 
     pub async fn forward(&mut self, resource: &'static Resource) -> Result<()> {
         let (socket, ltoken) = self.sockets.get_loopback(resource.ports.local).await?;
-        let future = self.bind(socket, resource, Some(ltoken)).await?;
+        let future = self.bind(socket, resource, ltoken).await?;
 
         self.tracker.spawn(future);
 
