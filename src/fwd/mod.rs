@@ -54,6 +54,7 @@ impl<'a> Forwarder<'a> {
         })
     }
 
+    #[instrument(err, skip(self, socket, resource, ltoken), fields(resource = %resource.alias))]
     pub async fn bind<'b>(
         &mut self,
         socket: TcpSocket,
@@ -67,6 +68,7 @@ impl<'a> Forwarder<'a> {
             _ => self.pool.default(),
         };
 
+        // TODO: How do we capture the error?
         let future = async move {
             let server = socket.listen(1024)?;
 
