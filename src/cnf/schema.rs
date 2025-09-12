@@ -1,7 +1,4 @@
-use std::{
-    collections::HashMap,
-    hash::{Hash, Hasher},
-};
+use std::collections::HashMap;
 
 use ipnet::IpNet;
 use schemars::JsonSchema;

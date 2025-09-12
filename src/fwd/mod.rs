@@ -41,10 +41,7 @@ impl<'a> Forwarder<'a> {
         let token = CancellationToken::new();
         let tracker = TaskTracker::new();
         let pool = ClientPool::new().await?;
-        let sockets = match loopback {
-            Some(net) => SocketPool::new_with_loopback(net).await?,
-            None => SocketPool::new(),
-        };
+        let sockets = loopback.map_or_else(SocketPool::new, SocketPool::new_with_loopback);
 
         Ok(Self {
             pool,

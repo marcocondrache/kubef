@@ -21,7 +21,7 @@ impl LoopbackToken {
     }
 
     pub fn get_loopback(&self) -> IpAddr {
-        self.inner.clone()
+        self.inner
     }
 }
 
@@ -103,10 +103,10 @@ impl SocketPool {
         Self { pool: None }
     }
 
-    pub async fn new_with_loopback(net: IpNet) -> Result<Self> {
-        Ok(Self {
+    pub fn new_with_loopback(net: IpNet) -> Self {
+        Self {
             pool: Some(net.hosts()),
-        })
+        }
     }
 
     pub async fn get_loopback(&mut self, port: Option<u16>) -> Result<(TcpSocket, LoopbackToken)> {

@@ -31,7 +31,7 @@ impl DnsResolver {
         let origin = Name::from_str(Self::ORIGIN)?;
         let authority = InMemoryAuthority::empty(origin.clone(), ZoneType::Primary, false);
 
-        Ok(Self { authority, origin })
+        Ok(Self { origin, authority })
     }
 
     pub async fn os_resolver(&self) -> Result<()> {

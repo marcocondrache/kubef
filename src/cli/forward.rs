@@ -1,7 +1,7 @@
 use anyhow::Result;
 use clap::Args;
 use either::Either;
-use tracing::{debug, error};
+use tracing::error;
 
 use crate::{
     cnf::{self},
