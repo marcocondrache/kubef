@@ -17,6 +17,8 @@ use tokio::{
 };
 use tracing::debug;
 
+use crate::cnf::schema::Resource;
+
 pub struct DnsResolver {
     // TODO: remove origin from struct
     origin: Name,
@@ -39,6 +41,12 @@ impl DnsResolver {
         fs::write("/etc/resolver/svc/resolver.conf", b"nameserver 127.0.0.1").await?;
 
         Ok(())
+    }
+
+    pub async fn add_resource(&mut self, resource: &Resource, address: IpAddr) -> Result<()> {
+        let fqdn = format!("{}.{}.{}", resource.alias, resource.namespace, Self::ORIGIN);
+
+        self.add_record(fqdn, address).await
     }
 
     pub async fn add_record(&mut self, fqdn: String, addr: IpAddr) -> Result<()> {

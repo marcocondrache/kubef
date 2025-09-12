@@ -1,11 +1,9 @@
 use anyhow::Result;
 use clap::Args;
 use either::Either;
-use tracing::error;
 
 use crate::{
     cnf::{self},
-    dns::DnsResolver,
     fwd::{Forwarder, Target},
 };
 
@@ -26,43 +24,29 @@ pub async fn init(
     let resources = get_target(config, &target)?;
     let context = context.as_deref().or(config.context.as_deref());
 
-    let mut resolver = DnsResolver::new()?;
+    // let mut resolver = DnsResolver::new()?;
     let mut forwarder = Forwarder::new(context, config.loopback).await?;
 
     match resources {
         Either::Left(resource) => {
-            let loopback = forwarder.forward(resource).await?;
-            let fqdn = format!(
-                "{}.{}.{}",
-                resource.alias,
-                resource.namespace,
-                DnsResolver::ORIGIN
-            );
-
-            resolver.add_record(fqdn, loopback).await?;
+            forwarder.forward(resource).await?;
         }
         Either::Right(resources) => {
             for resource in resources {
-                let loopback = forwarder.forward(resource).await?;
-                let fqdn = format!(
-                    "{}.{}.{}",
-                    resource.alias,
-                    resource.namespace,
-                    DnsResolver::ORIGIN
-                );
-
-                resolver.add_record(fqdn, loopback).await?;
+                forwarder.forward(resource).await?;
             }
         }
     }
 
-    tokio::select! {
-        biased;
-        _ = tokio::signal::ctrl_c() => {}
-        Err(e) = resolver.serve() => {
-            error!("DNS server stopped with error: {}", e);
-        }
-    }
+    tokio::signal::ctrl_c().await?;
+
+    // tokio::select! {
+    //     biased;
+    //     _ = tokio::signal::ctrl_c() => {}
+    //     Err(e) = resolver.serve() => {
+    //         error!("DNS server stopped with error: {}", e);
+    //     }
+    // }
 
     forwarder.shutdown().await?;
 
