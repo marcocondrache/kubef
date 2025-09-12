@@ -53,20 +53,21 @@ impl<'a> Forwarder<'a> {
     }
 
     pub async fn forward(&mut self, resource: &'static Resource) -> Result<IpAddr> {
-        let client = match (resource.context.as_deref(), self.context) {
-            (Some(context), _) | (_, Some(context)) => self.pool.get_or_insert(context).await?,
+        let context = resource.context.as_deref().or(self.context);
+        let client = match context {
+            Some(context) => self.pool.get_or_insert(context).await?,
             _ => self.pool.default(),
         };
 
-        let (socket, reservation) = self.sockets.get_loopback(resource.ports.local).await?;
-        let loopback = reservation.get_loopback();
+        let (socket, ltoken) = self.sockets.get_loopback(resource.ports.local).await?;
+        let loopback = ltoken.get_loopback();
 
         self.tracker.spawn(bind(
             socket,
             resource,
             client,
             self.token.child_token(),
-            reservation,
+            ltoken,
         ));
 
         Ok(loopback)

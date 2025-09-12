@@ -10,9 +10,6 @@ static CNF: OnceCell<schema::Config> = OnceCell::const_new();
 pub async fn extract() -> Result<&'static schema::Config> {
     let xdg = xdg::BaseDirectories::with_prefix("kubef");
 
-    println!("XDG: {:?}", xdg);
-    println!("KUBEF_CONFIG: {:?}", env::var("KUBEF_CONFIG"));
-
     let path = match env::var("KUBEF_CONFIG") {
         Ok(val) => std::path::PathBuf::from(val),
         Err(_) => xdg

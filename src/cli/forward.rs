@@ -24,11 +24,7 @@ pub async fn init(
     let config = cnf::extract().await?;
 
     let resources = get_target(config, &target)?;
-    let context = match (config.context.as_deref(), context.as_deref()) {
-        (Some(_), Some(arg_context)) => Some(arg_context),
-        (Some(context), _) | (_, Some(context)) => Some(context),
-        _ => None,
-    };
+    let context = context.as_deref().or(config.context.as_deref());
 
     let mut resolver = DnsResolver::new()?;
     let mut forwarder = Forwarder::new(context, config.loopback).await?;
