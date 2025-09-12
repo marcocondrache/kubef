@@ -36,14 +36,14 @@ pub struct SocketPool {
 }
 
 impl SocketPool {
-    pub fn new_with_loopback(net: IpNet) -> Self {
+    pub fn with_loopback(net: IpNet) -> Self {
         Self {
             pool: Some(net.hosts()),
         }
     }
 
     pub async fn get_loopback(
-        &mut self,
+        &self,
         port: Option<u16>,
     ) -> Result<(TcpSocket, Option<LoopbackToken>)> {
         let (loopback, token) = match self.pool {

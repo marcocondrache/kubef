@@ -24,7 +24,7 @@ pub async fn init(
     let resources = get_target(config, &target)?;
     let context = context.as_deref().or(config.context.as_deref());
 
-    let mut forwarder = Forwarder::new(context, config.loopback).await?;
+    let mut forwarder = Forwarder::new(context, config.loopback);
 
     match resources {
         Either::Left(resource) => forwarder.forward(resource).await?,
@@ -37,7 +37,7 @@ pub async fn init(
     Ok(())
 }
 
-fn get_target<'a>(config: &'a cnf::schema::Config, target: &str) -> Result<Target<'a>> {
+fn get_target<'cnf>(config: &'cnf cnf::schema::Config, target: &str) -> Result<Target<'cnf>> {
     if let Some(resource) = config
         .groups
         .values()

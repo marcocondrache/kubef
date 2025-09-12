@@ -1,30 +1,28 @@
 use anyhow::Result;
 use kube::{Client, Config, config::KubeConfigOptions};
 use std::collections::{HashMap, hash_map::Entry};
+use tokio::sync::OnceCell;
 
-pub struct ClientPool {
-    default: Client,
-    clients: HashMap<String, Client>,
+#[derive(Default)]
+pub struct ClientPool<'ctx> {
+    default: OnceCell<Client>,
+    clients: HashMap<&'ctx str, Client>,
 }
 
-impl ClientPool {
-    pub async fn new() -> Result<Self> {
-        Ok(Self {
-            default: Client::try_default().await?,
-            clients: HashMap::new(),
-        })
+impl<'ctx> ClientPool<'ctx> {
+    pub async fn get_default(&self) -> Result<Client> {
+        self.default
+            .get_or_try_init(|| async { Ok(Client::try_default().await?) })
+            .await
+            .cloned()
     }
 
-    pub fn default(&self) -> Client {
-        self.default.clone()
-    }
-
-    pub async fn get_or_insert(&mut self, context: &str) -> Result<Client> {
-        match self.clients.entry(context.to_string()) {
+    pub async fn get_or_insert(&mut self, context: &'ctx str) -> Result<Client> {
+        match self.clients.entry(context) {
             Entry::Occupied(entry) => Ok(entry.get().clone()),
             Entry::Vacant(entry) => {
                 let config = Config::from_kubeconfig(&KubeConfigOptions {
-                    context: Some(context.to_string()),
+                    context: Some(context.to_owned()),
                     cluster: None,
                     user: None,
                 })

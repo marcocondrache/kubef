@@ -28,44 +28,42 @@ mod watcher;
 
 pub type Target<'a> = Either<&'a Resource, &'a [Resource]>;
 
-pub struct Forwarder<'a> {
-    pool: ClientPool,
+pub struct Forwarder<'ctx> {
+    pool: ClientPool<'ctx>,
     sockets: SocketPool,
     tracker: TaskTracker,
     token: CancellationToken,
-    context: Option<&'a str>,
+    context: Option<&'ctx str>,
 }
 
-impl<'a> Forwarder<'a> {
-    pub async fn new(context: Option<&'a str>, loopback: Option<IpNet>) -> Result<Self> {
+impl<'ctx> Forwarder<'ctx> {
+    pub fn new(context: Option<&'ctx str>, loopback: Option<IpNet>) -> Self {
         let token = CancellationToken::new();
         let tracker = TaskTracker::new();
-        let pool = ClientPool::new().await?;
-        let sockets = loopback
-            .map(SocketPool::new_with_loopback)
-            .unwrap_or_default();
+        let pool = ClientPool::default();
+        let sockets = loopback.map(SocketPool::with_loopback).unwrap_or_default();
 
-        Ok(Self {
+        Self {
             pool,
             sockets,
             tracker,
             token,
             context,
-        })
+        }
     }
 
     #[instrument(err, skip(self, socket, resource, ltoken), fields(resource = %resource.alias))]
-    pub async fn bind<'b>(
+    pub async fn bind<'fut>(
         &mut self,
         socket: TcpSocket,
         resource: &'static Resource,
         ltoken: Option<LoopbackToken>,
-    ) -> Result<impl Future<Output = Result<()>> + 'b> {
+    ) -> Result<impl Future<Output = Result<()>> + 'fut> {
         let token = self.token.child_token();
         let context = resource.context.as_deref().or(self.context);
         let client = match context {
             Some(context) => self.pool.get_or_insert(context).await?,
-            _ => self.pool.default(),
+            _ => self.pool.get_default().await?,
         };
 
         // TODO: How do we capture the error?
@@ -83,7 +81,7 @@ impl<'a> Forwarder<'a> {
             let tracker = TaskTracker::new();
             let api = Api::<Pod>::namespaced(client.clone(), namespace);
             let api_ptr = Arc::new(api.clone());
-            let selector = select(client.clone(), &resource.selector, namespace).await?;
+            let selector = select(client, &resource.selector, namespace).await?;
             let policy = resource
                 .policy
                 .clone()
@@ -151,7 +149,7 @@ impl<'a> Forwarder<'a> {
         Ok(())
     }
 
-    pub async fn shutdown(&mut self) -> Result<()> {
+    pub async fn shutdown(&self) -> Result<()> {
         self.token.cancel();
         self.tracker.close();
         self.tracker.wait().await;
