@@ -1,4 +1,4 @@
-use std::{net::IpAddr, sync::Arc};
+use std::sync::Arc;
 
 use crate::{
     cnf::schema::{Resource, ResourceSelector, SelectorPolicy},
@@ -52,7 +52,7 @@ impl<'a> Forwarder<'a> {
         })
     }
 
-    pub async fn forward(&mut self, resource: &'static Resource) -> Result<IpAddr> {
+    pub async fn forward(&mut self, resource: &'static Resource) -> Result<()> {
         let context = resource.context.as_deref().or(self.context);
         let client = match context {
             Some(context) => self.pool.get_or_insert(context).await?,
@@ -60,7 +60,6 @@ impl<'a> Forwarder<'a> {
         };
 
         let (socket, ltoken) = self.sockets.get_loopback(resource.ports.local).await?;
-        let loopback = ltoken.get_loopback();
 
         self.tracker.spawn(bind(
             socket,
@@ -70,7 +69,18 @@ impl<'a> Forwarder<'a> {
             ltoken,
         ));
 
-        Ok(loopback)
+        Ok(())
+    }
+
+    pub async fn forward_all<I>(&mut self, resources: I) -> Result<()>
+    where
+        I: IntoIterator<Item = &'static Resource>,
+    {
+        for resource in resources {
+            self.forward(resource).await?;
+        }
+
+        Ok(())
     }
 
     pub async fn shutdown(&mut self) -> Result<()> {

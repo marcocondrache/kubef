@@ -12,16 +12,16 @@ pub struct LoopbackToken {
 
 impl LoopbackToken {
     pub async fn new(address: IpAddr) -> Result<Self> {
+        if !address.is_loopback() {
+            anyhow::bail!("Address is not a loopback address");
+        }
+
         if address != IpAddr::V4(Ipv4Addr::LOCALHOST) && address != IpAddr::V6(Ipv6Addr::LOCALHOST)
         {
             SocketPool::ensure_loopback(address).await?;
         }
 
         Ok(Self { inner: address })
-    }
-
-    pub fn get_loopback(&self) -> IpAddr {
-        self.inner
     }
 }
 
@@ -88,11 +88,13 @@ impl SocketPool {
     }
 
     #[cfg(not(target_os = "macos"))]
+    #[instrument(skip(address))]
     async fn ensure_loopback(address: IpAddr) -> Result<()> {
         Ok(())
     }
 
     #[cfg(not(target_os = "macos"))]
+    #[instrument(skip(address))]
     async fn drop_loopback(address: IpAddr) -> Result<()> {
         Ok(())
     }

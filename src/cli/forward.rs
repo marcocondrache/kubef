@@ -24,30 +24,14 @@ pub async fn init(
     let resources = get_target(config, &target)?;
     let context = context.as_deref().or(config.context.as_deref());
 
-    // let mut resolver = DnsResolver::new()?;
     let mut forwarder = Forwarder::new(context, config.loopback).await?;
 
     match resources {
-        Either::Left(resource) => {
-            forwarder.forward(resource).await?;
-        }
-        Either::Right(resources) => {
-            for resource in resources {
-                forwarder.forward(resource).await?;
-            }
-        }
+        Either::Left(resource) => forwarder.forward(resource).await?,
+        Either::Right(resources) => forwarder.forward_all(resources).await?,
     }
 
     tokio::signal::ctrl_c().await?;
-
-    // tokio::select! {
-    //     biased;
-    //     _ = tokio::signal::ctrl_c() => {}
-    //     Err(e) = resolver.serve() => {
-    //         error!("DNS server stopped with error: {}", e);
-    //     }
-    // }
-
     forwarder.shutdown().await?;
 
     Ok(())
