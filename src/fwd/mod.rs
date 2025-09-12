@@ -26,7 +26,7 @@ mod clients;
 mod sockets;
 mod watcher;
 
-pub type Target<'a> = Either<&'a Resource, &'a Vec<Resource>>;
+pub type Target<'a> = Either<&'a Resource, &'a [Resource]>;
 
 pub struct Forwarder<'a> {
     pool: ClientPool,
@@ -54,30 +54,94 @@ impl<'a> Forwarder<'a> {
         })
     }
 
-    pub async fn forward(&mut self, resource: &'static Resource) -> Result<()> {
+    pub async fn bind<'b>(
+        &mut self,
+        socket: TcpSocket,
+        resource: &'static Resource,
+        ltoken: Option<LoopbackToken>,
+    ) -> Result<impl Future<Output = Result<()>> + 'b> {
+        let token = self.token.child_token();
         let context = resource.context.as_deref().or(self.context);
         let client = match context {
             Some(context) => self.pool.get_or_insert(context).await?,
             _ => self.pool.default(),
         };
 
-        let (socket, ltoken) = self.sockets.get_loopback(resource.ports.local).await?;
+        let future = async move {
+            let server = socket.listen(1024)?;
 
-        self.tracker.spawn(bind(
-            socket,
-            resource,
-            client,
-            self.token.child_token(),
-            ltoken,
-        ));
+            info!(
+                "Listening TCP on {} forwarded to {}",
+                server.local_addr()?,
+                resource.alias
+            );
+
+            let namespace = resource.namespace.as_str();
+
+            let tracker = TaskTracker::new();
+            let api = Api::<Pod>::namespaced(client.clone(), namespace);
+            let api_ptr = Arc::new(api.clone());
+            let selector = select(client.clone(), &resource.selector, namespace).await?;
+            let policy = resource
+                .policy
+                .clone()
+                .unwrap_or(SelectorPolicy::RoundRobin);
+
+            let mut watcher = watcher::PodWatcher::new(api, selector, policy).await?;
+
+            loop {
+                debug!("Current connections: {}", tracker.len());
+
+                tokio::select! {
+                    biased;
+                    () = token.cancelled() => break,
+                    Ok((connection, addr)) = server.accept() => {
+                        let api = api_ptr.clone();
+                        let token = token.child_token();
+
+                        let pod = match watcher.get() {
+                            Some(pod) => pod,
+                            None => token.run_until_cancelled(watcher.next()).await.transpose()?.context("Failed to get next pod")?,
+                        };
+
+                        let pod_name = pod.name_any();
+                        let pod_port = resource.ports.remote;
+
+                        info!(
+                            "Forwarding connection from {} to {}",
+                            addr,
+                            pod_name
+                        );
+
+                        tracker.spawn(forward(api, pod_port, pod_name, connection, token));
+                    }
+                    else => break,
+                }
+            }
+
+            watcher.shutdown();
+
+            tracker.close();
+            tracker.wait().await;
+
+            drop(ltoken);
+
+            Ok(())
+        };
+
+        Ok(future)
+    }
+
+    pub async fn forward(&mut self, resource: &'static Resource) -> Result<()> {
+        let (socket, ltoken) = self.sockets.get_loopback(resource.ports.local).await?;
+        let future = self.bind(socket, resource, Some(ltoken)).await?;
+
+        self.tracker.spawn(future);
 
         Ok(())
     }
 
-    pub async fn forward_all<I>(&mut self, resources: I) -> Result<()>
-    where
-        I: IntoIterator<Item = &'static Resource>,
-    {
+    pub async fn forward_all(&mut self, resources: &'static [Resource]) -> Result<()> {
         for resource in resources {
             self.forward(resource).await?;
         }
@@ -92,75 +156,6 @@ impl<'a> Forwarder<'a> {
 
         Ok(())
     }
-}
-
-#[instrument(err, skip(client, token, loopback), fields(resource = %resource.alias))]
-pub async fn bind(
-    socket: TcpSocket,
-    resource: &Resource,
-    client: Client,
-    token: CancellationToken,
-    loopback: LoopbackToken,
-) -> Result<()> {
-    let server = socket.listen(1024)?;
-
-    info!(
-        "Listening TCP on {} forwarded to {}",
-        server.local_addr()?,
-        resource.alias
-    );
-
-    let namespace = resource.namespace.as_str();
-
-    let tracker = TaskTracker::new();
-    let api = Api::<Pod>::namespaced(client.clone(), namespace);
-    let api_ptr = Arc::new(api.clone());
-    let selector = select(client.clone(), &resource.selector, namespace).await?;
-    let policy = resource
-        .policy
-        .clone()
-        .unwrap_or(SelectorPolicy::RoundRobin);
-
-    let mut watcher = watcher::PodWatcher::new(api, selector, policy).await?;
-
-    loop {
-        debug!("Current connections: {}", tracker.len());
-
-        tokio::select! {
-            biased;
-            () = token.cancelled() => break,
-            Ok((connection, addr)) = server.accept() => {
-                let api = api_ptr.clone();
-                let token = token.child_token();
-
-                let pod = match watcher.get() {
-                    Some(pod) => pod,
-                    None => token.run_until_cancelled(watcher.next()).await.transpose()?.context("Failed to get next pod")?,
-                };
-
-                let pod_name = pod.name_any();
-                let pod_port = resource.ports.remote;
-
-                info!(
-                    "Forwarding connection from {} to {}",
-                    addr,
-                    pod_name
-                );
-
-                tracker.spawn(forward(api, pod_port, pod_name, connection, token));
-            }
-            else => break,
-        }
-    }
-
-    watcher.shutdown();
-
-    tracker.close();
-    tracker.wait().await;
-
-    drop(loopback);
-
-    Ok(())
 }
 
 #[instrument(err(level = Level::WARN), skip(api, connection, token))]
