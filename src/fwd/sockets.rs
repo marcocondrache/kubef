@@ -33,13 +33,37 @@ impl Drop for LoopbackToken {
     }
 }
 
+#[derive(Default)]
 pub struct SocketPool {
     pool: Option<IpAddrRange>,
 }
 
-impl Default for SocketPool {
-    fn default() -> Self {
-        Self::new()
+impl SocketPool {
+    pub fn new_with_loopback(net: IpNet) -> Self {
+        Self {
+            pool: Some(net.hosts()),
+        }
+    }
+
+    pub async fn get_loopback(&mut self, port: Option<u16>) -> Result<(TcpSocket, LoopbackToken)> {
+        let loopback = match self.pool {
+            Some(mut pool) => pool
+                .next()
+                .context("No more loopback addresses available")?,
+            None => Ipv4Addr::LOCALHOST.into(),
+        };
+
+        let token = LoopbackToken::new(loopback).await?;
+
+        let address = SocketAddr::from((loopback, port.unwrap_or(0)));
+        let socket = match loopback {
+            IpAddr::V4(_) => TcpSocket::new_v4()?,
+            IpAddr::V6(_) => TcpSocket::new_v6()?,
+        };
+
+        Self::bind(&socket, address)?;
+
+        Ok((socket, token))
     }
 }
 
@@ -97,38 +121,5 @@ impl SocketPool {
     #[instrument(skip(address))]
     async fn drop_loopback(address: IpAddr) -> Result<()> {
         Ok(())
-    }
-}
-
-impl SocketPool {
-    pub fn new() -> Self {
-        Self { pool: None }
-    }
-
-    pub fn new_with_loopback(net: IpNet) -> Self {
-        Self {
-            pool: Some(net.hosts()),
-        }
-    }
-
-    pub async fn get_loopback(&mut self, port: Option<u16>) -> Result<(TcpSocket, LoopbackToken)> {
-        let loopback = match self.pool {
-            Some(mut pool) => pool
-                .next()
-                .context("No more loopback addresses available")?,
-            None => Ipv4Addr::LOCALHOST.into(),
-        };
-
-        let token = LoopbackToken::new(loopback).await?;
-
-        let address = SocketAddr::from((loopback, port.unwrap_or(0)));
-        let socket = match loopback {
-            IpAddr::V4(_) => TcpSocket::new_v4()?,
-            IpAddr::V6(_) => TcpSocket::new_v6()?,
-        };
-
-        Self::bind(&socket, address)?;
-
-        Ok((socket, token))
     }
 }
