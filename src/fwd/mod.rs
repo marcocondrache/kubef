@@ -145,11 +145,11 @@ impl<'ctx> Forwarder<'ctx> {
     }
 }
 
-#[instrument(err(level = Level::WARN), skip(api, connection, token))]
+#[instrument(err(level = Level::WARN), skip(api, connection, token), fields(pod_name = %pod_name.as_ref()))]
 pub async fn forward(
     api: Arc<Api<Pod>>,
     pod_port: u16,
-    pod_name: String,
+    pod_name: impl AsRef<str>,
     mut connection: TcpStream,
     token: CancellationToken,
 ) -> Result<()> {
@@ -157,10 +157,10 @@ pub async fn forward(
     connection.set_nodelay(true)?;
     connection.set_linger(None)?;
 
-    debug!("Opening upstream connection to {}", pod_name);
+    debug!("Opening upstream connection to {}", pod_name.as_ref());
 
     let ports = [pod_port];
-    let mut forwarding = api.portforward(&pod_name, &ports).await?;
+    let mut forwarding = api.portforward(pod_name.as_ref(), &ports).await?;
     let mut upstream = forwarding
         .take_stream(pod_port)
         .context("Failed to take stream")?;
