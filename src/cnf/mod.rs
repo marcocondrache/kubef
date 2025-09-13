@@ -1,7 +1,7 @@
 use std::env;
 
 use anyhow::Result;
-use tokio::sync::OnceCell;
+use tokio::{sync::OnceCell, task};
 
 pub mod schema;
 
@@ -19,10 +19,14 @@ pub async fn extract() -> Result<&'static schema::Config> {
 
     let config = CNF
         .get_or_try_init(|| async {
-            let config = tokio::fs::read(path).await?;
-            let config: schema::Config = serde_yml::from_slice(&config)?;
+            let parser = task::spawn_blocking(|| {
+                let file = std::fs::File::open(path)?;
+                let config: schema::Config = serde_yaml_ng::from_reader(file)?;
 
-            Ok::<_, anyhow::Error>(config)
+                Ok::<_, anyhow::Error>(config)
+            });
+
+            parser.await?
         })
         .await?;
 
