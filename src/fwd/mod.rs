@@ -105,7 +105,6 @@ impl<'ctx> Forwarder<'ctx> {
 
                         tracker.spawn(forward(api, pod_port, pod_name, connection, token.child_token()));
                     }
-                    else => break,
                 }
             }
 
