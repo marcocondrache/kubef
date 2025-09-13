@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use kube::{Client, Config, config::KubeConfigOptions};
 use std::collections::{HashMap, hash_map::Entry};
 use tokio::sync::OnceCell;
@@ -12,8 +12,9 @@ pub struct ClientPool<'ctx> {
 impl<'ctx> ClientPool<'ctx> {
     pub async fn get_default(&self) -> Result<Client> {
         self.default
-            .get_or_try_init(|| async { Ok(Client::try_default().await?) })
+            .get_or_try_init(Client::try_default)
             .await
+            .context("Failed to get default client")
             .cloned()
     }
 
