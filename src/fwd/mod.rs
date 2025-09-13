@@ -87,14 +87,12 @@ impl<'ctx> Forwarder<'ctx> {
                 tokio::select! {
                     biased;
                     () = token.cancelled() => break,
+                    // Wait for next pod before accepting new connections
+                    _ = watcher.next(), if watcher.is_empty() => {},
                     Ok((connection, addr)) = server.accept() => {
                         let api = api_ptr.clone();
-                        let token = token.child_token();
 
-                        let pod = match watcher.get() {
-                            Some(pod) => pod,
-                            None => token.run_until_cancelled(watcher.next()).await.transpose()?.context("Failed to get next pod")?,
-                        };
+                        let Some(pod) = watcher.get() else { continue };
 
                         let pod_name = pod.name_any();
                         let pod_port = resource.ports.remote;
@@ -105,7 +103,7 @@ impl<'ctx> Forwarder<'ctx> {
                             pod_name
                         );
 
-                        tracker.spawn(forward(api, pod_port, pod_name, connection, token));
+                        tracker.spawn(forward(api, pod_port, pod_name, connection, token.child_token()));
                     }
                     else => break,
                 }

@@ -65,6 +65,10 @@ impl PodWatcher {
         })
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.store.is_empty()
+    }
+
     pub fn get(&self) -> Option<Arc<Object>> {
         if self.store.is_empty() {
             return None;
