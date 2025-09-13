@@ -1,12 +1,13 @@
+use std::collections::{HashMap, hash_map::Entry};
+
 use anyhow::{Context, Result};
-use dashmap::{DashMap, Entry};
 use kube::{Client, Config, config::KubeConfigOptions};
 use tokio::sync::OnceCell;
 
 #[derive(Default)]
 pub struct ClientPool<'ctx> {
     default: OnceCell<Client>,
-    clients: DashMap<&'ctx str, Client>,
+    clients: HashMap<&'ctx str, Client>,
 }
 
 impl<'ctx> ClientPool<'ctx> {
@@ -18,7 +19,7 @@ impl<'ctx> ClientPool<'ctx> {
             .cloned()
     }
 
-    pub async fn get_or_insert(&self, context: &'ctx str) -> Result<Client> {
+    pub async fn get_or_insert(&mut self, context: &'ctx str) -> Result<Client> {
         match self.clients.entry(context) {
             Entry::Occupied(entry) => Ok(entry.get().clone()),
             Entry::Vacant(entry) => {
