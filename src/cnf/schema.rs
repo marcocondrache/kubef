@@ -33,7 +33,7 @@ pub struct Ports {
     pub local: Option<u16>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, Default, JsonSchema)]
+#[derive(Serialize, Deserialize, Clone, Debug, Copy, Default, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 #[serde(deny_unknown_fields)]
 pub enum SelectorPolicy {

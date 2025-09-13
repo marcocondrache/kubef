@@ -78,7 +78,7 @@ impl<'ctx> Forwarder<'ctx> {
             let api = Api::<Pod>::namespaced(client.clone(), namespace);
             let api_ptr = Arc::new(api.clone());
             let selector = select(client, &resource.selector, namespace).await?;
-            let policy = resource.policy.clone().unwrap_or_default();
+            let policy = resource.policy.unwrap_or_default();
 
             let mut watcher = watcher::PodWatcher::new(api, selector, policy).await?;
 
