@@ -56,35 +56,34 @@ impl<'ctx> Forwarder<'ctx> {
         ltoken: Option<LoopbackToken>,
     ) -> Result<impl Future<Output = Result<()>> + 'fut> {
         let token = self.token.child_token();
+        let tracker = self.tracker.clone();
+
+        let policy = resource.policy.unwrap_or_default();
         let context = resource.context.as_deref().or(self.context);
+
         let client = match context {
             Some(context) => self.pool.get_or_insert(context).await?,
             _ => self.pool.get_default().await?,
         };
 
+        let server = socket.listen(1024)?;
+
+        let api = Api::<Pod>::namespaced(client.clone(), &resource.namespace);
+
+        info!(
+            "Listening TCP on {} forwarded to {}",
+            server.local_addr()?,
+            resource.alias
+        );
+
         // TODO: How do we capture the error?
         let future = async move {
-            let server = socket.listen(1024)?;
+            let selector = select(client, resource).await?;
+            let mut watcher = watcher::PodWatcher::new(api.clone(), &selector, policy).await?;
 
-            info!(
-                "Listening TCP on {} forwarded to {}",
-                server.local_addr()?,
-                resource.alias
-            );
-
-            let namespace = resource.namespace.as_str();
-
-            let tracker = TaskTracker::new();
-            let api = Api::<Pod>::namespaced(client.clone(), namespace);
-            let api_ptr = Arc::new(api.clone());
-            let selector = select(client, &resource.selector, namespace).await?;
-            let policy = resource.policy.unwrap_or_default();
-
-            let mut watcher = watcher::PodWatcher::new(api, &selector, policy).await?;
+            let api_ptr = Arc::new(api);
 
             loop {
-                debug!("Current connections: {}", tracker.len());
-
                 tokio::select! {
                     biased;
                     () = token.cancelled() => break,
@@ -111,11 +110,6 @@ impl<'ctx> Forwarder<'ctx> {
                     else => break,
                 }
             }
-
-            watcher.shutdown();
-
-            tracker.close();
-            tracker.wait().await;
 
             drop(ltoken);
 
@@ -202,12 +196,8 @@ pub async fn forward(
         .context("Failed to conclude forward")
 }
 
-pub async fn select(
-    client: Client,
-    selector: &ResourceSelector,
-    namespace: &str,
-) -> Result<Selector> {
-    match selector {
+pub async fn select(client: Client, resource: &Resource) -> Result<Selector> {
+    match &resource.selector {
         ResourceSelector::Label(labels) => {
             let result = labels
                 .iter()
@@ -217,7 +207,7 @@ pub async fn select(
             Ok(result)
         }
         ResourceSelector::Deployment(name) => {
-            let api: Api<Deployment> = Api::namespaced(client, namespace);
+            let api: Api<Deployment> = Api::namespaced(client, &resource.namespace);
             let deployment = api.get(name).await?;
             let selector = deployment.spec.context("Deployment has no spec")?.selector;
 
@@ -233,7 +223,7 @@ pub async fn select(
         ResourceSelector::Hostname(name) => {
             let service_name = name.split('.').next().unwrap_or(name);
 
-            let api: Api<Service> = Api::namespaced(client, namespace);
+            let api: Api<Service> = Api::namespaced(client, &resource.namespace);
             let service = api.get(service_name).await?;
             let selector = service.spec.context("Service has no spec")?.selector;
 
@@ -246,7 +236,7 @@ pub async fn select(
             Ok(result)
         }
         ResourceSelector::Service(name) => {
-            let api: Api<Service> = Api::namespaced(client, namespace);
+            let api: Api<Service> = Api::namespaced(client, &resource.namespace);
             let service = api.get(name).await?;
             let selector = service.spec.context("Service has no spec")?.selector;
 
