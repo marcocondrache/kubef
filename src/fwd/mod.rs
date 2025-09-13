@@ -28,6 +28,7 @@ mod watcher;
 
 pub type Target<'a> = Either<&'a Resource, &'a [Resource]>;
 
+#[derive(Default)]
 pub struct Forwarder<'ctx> {
     pool: ClientPool<'ctx>,
     sockets: SocketPool,
@@ -37,30 +38,14 @@ pub struct Forwarder<'ctx> {
 }
 
 impl<'ctx> Forwarder<'ctx> {
-    pub fn new() -> Self {
-        let token = CancellationToken::new();
-        let tracker = TaskTracker::new();
-        let pool = ClientPool::default();
-        let sockets = SocketPool::default();
-
-        Self {
-            pool,
-            sockets,
-            tracker,
-            token,
-            context: None,
-        }
+    pub fn with_context(mut self, context: impl Into<Option<&'ctx str>>) -> Self {
+        self.context = context.into();
+        self
     }
 
-    pub fn with_context(self, context: Option<&'ctx str>) -> Self {
-        Self { context, ..self }
-    }
-
-    pub fn with_loopback(self, loopback: Option<IpNet>) -> Self {
-        Self {
-            sockets: SocketPool::with_loopback(loopback),
-            ..self
-        }
+    pub fn with_loopback(mut self, loopback: impl Into<Option<IpNet>>) -> Self {
+        self.sockets = self.sockets.with_loopback(loopback.into());
+        self
     }
 
     #[instrument(err, skip(self, socket, resource, ltoken), fields(resource = %resource.alias))]
