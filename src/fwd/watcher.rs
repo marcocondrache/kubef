@@ -33,8 +33,8 @@ pub struct PodWatcher {
 }
 
 impl PodWatcher {
-    pub async fn new(api: Api<Pod>, selector: Selector, policy: SelectorPolicy) -> Result<Self> {
-        let config = watcher::Config::default().labels_from(&selector);
+    pub async fn new(api: Api<Pod>, selector: &Selector, policy: SelectorPolicy) -> Result<Self> {
+        let config = watcher::Config::default().labels_from(selector);
 
         let (store, writer) = reflector::store_shared(256);
 

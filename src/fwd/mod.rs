@@ -80,7 +80,7 @@ impl<'ctx> Forwarder<'ctx> {
             let selector = select(client, &resource.selector, namespace).await?;
             let policy = resource.policy.unwrap_or_default();
 
-            let mut watcher = watcher::PodWatcher::new(api, selector, policy).await?;
+            let mut watcher = watcher::PodWatcher::new(api, &selector, policy).await?;
 
             loop {
                 debug!("Current connections: {}", tracker.len());
