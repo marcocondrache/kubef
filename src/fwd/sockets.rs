@@ -25,6 +25,7 @@ impl LoopbackToken {
 impl Drop for LoopbackToken {
     fn drop(&mut self) {
         if cfg!(target_os = "macos") {
+            // TODO: this doesn't always fire
             tokio::spawn(SocketPool::drop_loopback(self.inner));
         }
     }
