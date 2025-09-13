@@ -36,17 +36,17 @@ pub struct SocketPool {
 }
 
 impl SocketPool {
-    pub fn with_loopback(mut self, net: Option<IpNet>) -> Self {
-        self.pool = net.map(|net| net.hosts());
+    pub fn with_loopback(mut self, net: impl Into<Option<IpNet>>) -> Self {
+        self.pool = net.into().map(|net| net.hosts());
         self
     }
 
     pub async fn get_loopback(
-        &self,
+        &mut self,
         port: Option<u16>,
     ) -> Result<(TcpSocket, Option<LoopbackToken>)> {
-        let (loopback, token) = match self.pool {
-            Some(mut pool) => {
+        let (loopback, token) = match self.pool.as_mut() {
+            Some(pool) => {
                 let loopback = pool
                     .next()
                     .context("No more loopback addresses available")?;
