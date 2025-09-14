@@ -8,11 +8,15 @@ use std::{
 
 use anyhow::{Context, Result};
 use futures::StreamExt;
-use k8s_openapi::api::core::v1::Pod;
+use k8s_openapi::api::{
+    apps::v1::Deployment,
+    core::v1::{Pod, Service},
+};
 use kube::{
-    Api,
+    Api, Client,
     api::PartialObjectMeta,
-    core::Selector,
+    client::scope::Namespace,
+    core::{Expression, Selector},
     runtime::{
         WatchStreamExt, predicates,
         reflector::{self, ReflectHandle, Store},
@@ -22,11 +26,11 @@ use kube::{
 use tokio::task::JoinHandle;
 use tracing::debug;
 
-use crate::cnf::schema::SelectorPolicy;
+use crate::cnf::schema::{Resource, ResourceSelector, SelectorPolicy};
 
 type Object = PartialObjectMeta<Pod>;
 
-pub struct PodWatcher {
+pub struct Watcher {
     store: Store<Object>,
     subscriber: ReflectHandle<Object>,
     counter: AtomicUsize,
@@ -34,7 +38,7 @@ pub struct PodWatcher {
     handle: JoinHandle<()>,
 }
 
-impl PodWatcher {
+impl Watcher {
     pub async fn new(api: Api<Pod>, selector: &Selector, policy: SelectorPolicy) -> Result<Self> {
         let config = watcher::Config::default().labels_from(selector);
 
@@ -92,8 +96,52 @@ impl PodWatcher {
     }
 }
 
-impl Drop for PodWatcher {
+impl Drop for Watcher {
     fn drop(&mut self) {
         self.handle.abort();
+    }
+}
+
+pub async fn select(client: &Client, resource: &Resource) -> Result<Selector> {
+    match &resource.selector {
+        ResourceSelector::Label(labels) => {
+            let result = labels
+                .iter()
+                .map(|(k, v)| Expression::In(k.to_owned(), [v.to_owned()].into()))
+                .collect::<Selector>();
+
+            Ok(result)
+        }
+        ResourceSelector::Deployment(name) => {
+            let deployment = client
+                .get::<Deployment>(name, &Namespace::from(resource.namespace.clone()))
+                .await?;
+
+            let selector = deployment.spec.context("Deployment has no spec")?.selector;
+
+            let result = selector
+                .match_labels
+                .context("Deployment has no selector")?
+                .into_iter()
+                .map(|(k, v)| Expression::In(k, [v].into()))
+                .collect::<Selector>();
+
+            Ok(result)
+        }
+        ResourceSelector::Service(name) => {
+            let service = client
+                .get::<Service>(name, &Namespace::from(resource.namespace.clone()))
+                .await?;
+
+            let selector = service.spec.context("Service has no spec")?.selector;
+
+            let result = selector
+                .context("Service has no selector")?
+                .into_iter()
+                .map(|(k, v)| Expression::In(k, [v].into()))
+                .collect::<Selector>();
+
+            Ok(result)
+        }
     }
 }

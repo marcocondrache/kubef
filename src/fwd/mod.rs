@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::{
-    cnf::schema::{Resource, ResourceSelector},
+    cnf::schema::Resource,
     fwd::{
         clients::ClientPool,
         sockets::{LoopbackToken, SocketPool},
@@ -11,15 +11,8 @@ use anyhow::{Context, Result};
 use either::Either;
 use futures::future;
 use ipnet::IpNet;
-use k8s_openapi::api::{
-    apps::v1::Deployment,
-    core::v1::{Pod, Service},
-};
-use kube::{
-    Api, Client, ResourceExt,
-    client::scope::Namespace,
-    core::{Expression, Selector},
-};
+use k8s_openapi::api::core::v1::Pod;
+use kube::{Api, ResourceExt};
 use tokio::net::{TcpSocket, TcpStream};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 use tracing::{Level, debug, info, instrument};
@@ -81,8 +74,8 @@ impl<'ctx> Forwarder<'ctx> {
 
         // TODO: How do we capture the error?
         let future = async move {
-            let selector = select(&client, resource).await?;
-            let mut watcher = watcher::PodWatcher::new(api, &selector, policy).await?;
+            let selector = watcher::select(&client, resource).await?;
+            let mut watcher = watcher::Watcher::new(api, &selector, policy).await?;
 
             loop {
                 tokio::select! {
@@ -193,48 +186,4 @@ pub async fn forward(
         .join()
         .await
         .context("Failed to conclude forward")
-}
-
-pub async fn select(client: &Client, resource: &Resource) -> Result<Selector> {
-    match &resource.selector {
-        ResourceSelector::Label(labels) => {
-            let result = labels
-                .iter()
-                .map(|(k, v)| Expression::In(k.to_owned(), [v.to_owned()].into()))
-                .collect::<Selector>();
-
-            Ok(result)
-        }
-        ResourceSelector::Deployment(name) => {
-            let deployment = client
-                .get::<Deployment>(name, &Namespace::from(resource.namespace.clone()))
-                .await?;
-
-            let selector = deployment.spec.context("Deployment has no spec")?.selector;
-
-            let result = selector
-                .match_labels
-                .context("Deployment has no selector")?
-                .into_iter()
-                .map(|(k, v)| Expression::In(k, [v].into()))
-                .collect::<Selector>();
-
-            Ok(result)
-        }
-        ResourceSelector::Service(name) => {
-            let service = client
-                .get::<Service>(name, &Namespace::from(resource.namespace.clone()))
-                .await?;
-
-            let selector = service.spec.context("Service has no spec")?.selector;
-
-            let result = selector
-                .context("Service has no selector")?
-                .into_iter()
-                .map(|(k, v)| Expression::In(k, [v].into()))
-                .collect::<Selector>();
-
-            Ok(result)
-        }
-    }
 }
