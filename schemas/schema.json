@@ -9,10 +9,6 @@
         "null"
       ]
     },
-    "dns": {
-      "type": "boolean",
-      "default": false
-    },
     "groups": {
       "type": "object",
       "additionalProperties": {

@@ -16,6 +16,7 @@ use k8s_openapi::api::{
 };
 use kube::{
     Api, Client, ResourceExt,
+    client::scope::Namespace,
     core::{Expression, Selector},
 };
 use tokio::net::{TcpSocket, TcpStream};
@@ -69,6 +70,7 @@ impl<'ctx> Forwarder<'ctx> {
         let server = socket.listen(1024)?;
 
         let api = Api::<Pod>::namespaced(client.clone(), &resource.namespace);
+        let api_ptr = Arc::new(api.clone());
 
         info!(
             "Listening TCP on {} forwarded to {}",
@@ -78,10 +80,8 @@ impl<'ctx> Forwarder<'ctx> {
 
         // TODO: How do we capture the error?
         let future = async move {
-            let selector = select(client, resource).await?;
-            let mut watcher = watcher::PodWatcher::new(api.clone(), &selector, policy).await?;
-
-            let api_ptr = Arc::new(api);
+            let selector = select(&client, resource).await?;
+            let mut watcher = watcher::PodWatcher::new(api, &selector, policy).await?;
 
             loop {
                 tokio::select! {
@@ -193,7 +193,7 @@ pub async fn forward(
         .context("Failed to conclude forward")
 }
 
-pub async fn select(client: Client, resource: &Resource) -> Result<Selector> {
+pub async fn select(client: &Client, resource: &Resource) -> Result<Selector> {
     match &resource.selector {
         ResourceSelector::Label(labels) => {
             let result = labels
@@ -204,8 +204,10 @@ pub async fn select(client: Client, resource: &Resource) -> Result<Selector> {
             Ok(result)
         }
         ResourceSelector::Deployment(name) => {
-            let api: Api<Deployment> = Api::namespaced(client, &resource.namespace);
-            let deployment = api.get(name).await?;
+            let deployment = client
+                .get::<Deployment>(name, &Namespace::from(resource.namespace.clone()))
+                .await?;
+
             let selector = deployment.spec.context("Deployment has no spec")?.selector;
 
             let result = selector
@@ -220,8 +222,10 @@ pub async fn select(client: Client, resource: &Resource) -> Result<Selector> {
         ResourceSelector::Hostname(name) => {
             let service_name = name.split('.').next().unwrap_or(name);
 
-            let api: Api<Service> = Api::namespaced(client, &resource.namespace);
-            let service = api.get(service_name).await?;
+            let service = client
+                .get::<Service>(service_name, &Namespace::from(resource.namespace.clone()))
+                .await?;
+
             let selector = service.spec.context("Service has no spec")?.selector;
 
             let result = selector
@@ -233,8 +237,10 @@ pub async fn select(client: Client, resource: &Resource) -> Result<Selector> {
             Ok(result)
         }
         ResourceSelector::Service(name) => {
-            let api: Api<Service> = Api::namespaced(client, &resource.namespace);
-            let service = api.get(name).await?;
+            let service = client
+                .get::<Service>(name, &Namespace::from(resource.namespace.clone()))
+                .await?;
+
             let selector = service.spec.context("Service has no spec")?.selector;
 
             let result = selector

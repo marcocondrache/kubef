@@ -11,8 +11,6 @@ pub struct Config {
     pub groups: HashMap<String, Vec<Resource>>,
     #[schemars(with = "String")]
     pub loopback: Option<IpNet>,
-    #[serde(default)]
-    pub dns: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, JsonSchema)]
