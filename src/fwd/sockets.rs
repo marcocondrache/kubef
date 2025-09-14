@@ -115,13 +115,13 @@ impl SocketPool {
     }
 
     #[cfg(not(target_os = "macos"))]
-    #[instrument(skip(address))]
+    #[instrument(skip(_address))]
     async fn ensure_loopback(_address: IpAddr) -> Result<()> {
         Ok(())
     }
 
     #[cfg(not(target_os = "macos"))]
-    #[instrument(skip(address))]
+    #[instrument(skip(_address))]
     async fn drop_loopback(_address: IpAddr) -> Result<()> {
         Ok(())
     }
