@@ -47,6 +47,5 @@ pub enum SelectorPolicy {
 pub enum ResourceSelector {
     Label(Vec<(String, String)>),
     Deployment(String),
-    Hostname(String),
     Service(String),
 }

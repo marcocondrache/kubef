@@ -24,7 +24,7 @@ pub async fn init(
     let resources = get_target(config, &target)?;
     let context = context.as_deref().or(config.context.as_deref());
 
-    let mut forwarder = Forwarder::default()
+    let forwarder = Forwarder::default()
         .with_context(context)
         .with_loopback(config.loopback);
 

@@ -12,7 +12,7 @@ authors = [
 ]
 
 [dependencies]
-futures-lite = "2.6.1"
+futures = "0.3.31"
 tracing = "0.1.41"
 schemars = "1.0.4"
 anyhow = "1.0.99"

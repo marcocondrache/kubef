@@ -1,6 +1,6 @@
 use anyhow::{Context, Ok, Result};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-use tokio::net::TcpSocket;
+use tokio::{net::TcpSocket, sync::RwLock};
 use tracing::instrument;
 
 use ipnet::{IpAddrRange, IpNet};
@@ -32,22 +32,23 @@ impl Drop for LoopbackToken {
 
 #[derive(Default)]
 pub struct SocketPool {
-    pool: Option<IpAddrRange>,
+    pool: Option<RwLock<IpAddrRange>>,
 }
 
 impl SocketPool {
     pub fn with_loopback(mut self, net: impl Into<Option<IpNet>>) -> Self {
-        self.pool = net.into().map(|net| net.hosts());
+        self.pool = net.into().map(|net| RwLock::new(net.hosts()));
         self
     }
 
     pub async fn get_loopback(
-        &mut self,
+        &self,
         port: Option<u16>,
     ) -> Result<(TcpSocket, Option<LoopbackToken>)> {
-        let (loopback, token) = match self.pool.as_mut() {
+        let (loopback, token) = match &self.pool {
             Some(pool) => {
-                let loopback = pool
+                let mut lock = pool.write().await;
+                let loopback = lock
                     .next()
                     .context("No more loopback addresses available")?;
 

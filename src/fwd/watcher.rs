@@ -7,7 +7,7 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use futures_lite::StreamExt;
+use futures::StreamExt;
 use k8s_openapi::api::core::v1::Pod;
 use kube::{
     Api,
@@ -48,7 +48,7 @@ impl PodWatcher {
                 .default_backoff()
                 .applied_objects()
                 .predicate_filter(predicates::labels)
-                .for_each(|_| ()),
+                .for_each(|_| async {}),
         );
 
         tokio::time::timeout(Duration::from_secs(10), store.wait_until_ready())

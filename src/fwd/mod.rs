@@ -9,6 +9,7 @@ use crate::{
 };
 use anyhow::{Context, Result};
 use either::Either;
+use futures::future;
 use ipnet::IpNet;
 use k8s_openapi::api::{
     apps::v1::Deployment,
@@ -51,7 +52,7 @@ impl<'ctx> Forwarder<'ctx> {
 
     #[instrument(err, skip(self, socket, resource, ltoken), fields(resource = %resource.alias))]
     pub async fn bind<'fut>(
-        &mut self,
+        &self,
         socket: TcpSocket,
         resource: &'static Resource,
         ltoken: Option<LoopbackToken>,
@@ -116,7 +117,7 @@ impl<'ctx> Forwarder<'ctx> {
         Ok(future)
     }
 
-    pub async fn forward(&mut self, resource: &'static Resource) -> Result<()> {
+    pub async fn forward(&self, resource: &'static Resource) -> Result<()> {
         let (socket, ltoken) = self.sockets.get_loopback(resource.ports.local).await?;
         let future = self.bind(socket, resource, ltoken).await?;
 
@@ -125,10 +126,11 @@ impl<'ctx> Forwarder<'ctx> {
         Ok(())
     }
 
-    pub async fn forward_all(&mut self, resources: &'static [Resource]) -> Result<()> {
-        for resource in resources {
-            self.forward(resource).await?;
-        }
+    pub async fn forward_all(&self, resources: &'static [Resource]) -> Result<()> {
+        future::join_all(resources.iter().map(|resource| self.forward(resource)))
+            .await
+            .into_iter()
+            .collect::<Result<Vec<_>>>()?;
 
         Ok(())
     }
@@ -213,23 +215,6 @@ pub async fn select(client: &Client, resource: &Resource) -> Result<Selector> {
             let result = selector
                 .match_labels
                 .context("Deployment has no selector")?
-                .into_iter()
-                .map(|(k, v)| Expression::In(k, [v].into()))
-                .collect::<Selector>();
-
-            Ok(result)
-        }
-        ResourceSelector::Hostname(name) => {
-            let service_name = name.split('.').next().unwrap_or(name);
-
-            let service = client
-                .get::<Service>(service_name, &Namespace::from(resource.namespace.clone()))
-                .await?;
-
-            let selector = service.spec.context("Service has no spec")?.selector;
-
-            let result = selector
-                .context("Service has no selector")?
                 .into_iter()
                 .map(|(k, v)| Expression::In(k, [v].into()))
                 .collect::<Selector>();

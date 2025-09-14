@@ -149,23 +149,6 @@
             },
             "type": {
               "type": "string",
-              "const": "hostname"
-            }
-          },
-          "additionalProperties": false,
-          "required": [
-            "type",
-            "match"
-          ]
-        },
-        {
-          "type": "object",
-          "properties": {
-            "match": {
-              "type": "string"
-            },
-            "type": {
-              "type": "string",
               "const": "service"
             }
           },

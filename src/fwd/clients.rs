@@ -2,12 +2,12 @@ use std::collections::{HashMap, hash_map::Entry};
 
 use anyhow::{Context, Result};
 use kube::{Client, Config, config::KubeConfigOptions};
-use tokio::sync::OnceCell;
+use tokio::sync::{OnceCell, RwLock};
 
 #[derive(Default)]
 pub struct ClientPool<'ctx> {
     default: OnceCell<Client>,
-    clients: HashMap<&'ctx str, Client>,
+    clients: RwLock<HashMap<&'ctx str, Client>>,
 }
 
 impl<'ctx> ClientPool<'ctx> {
@@ -19,8 +19,10 @@ impl<'ctx> ClientPool<'ctx> {
             .cloned()
     }
 
-    pub async fn get_or_insert(&mut self, context: &'ctx str) -> Result<Client> {
-        match self.clients.entry(context) {
+    pub async fn get_or_insert(&self, context: &'ctx str) -> Result<Client> {
+        let mut pool = self.clients.write().await;
+
+        match pool.entry(context) {
             Entry::Occupied(entry) => Ok(entry.get().clone()),
             Entry::Vacant(entry) => {
                 let config = Config::from_kubeconfig(&KubeConfigOptions {
