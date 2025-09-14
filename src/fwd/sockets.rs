@@ -1,7 +1,6 @@
 use anyhow::{Context, Ok, Result};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use tokio::net::TcpSocket;
-#[cfg(target_os = "macos")]
 use tracing::instrument;
 
 use ipnet::{IpAddrRange, IpNet};
@@ -117,13 +116,13 @@ impl SocketPool {
 
     #[cfg(not(target_os = "macos"))]
     #[instrument(skip(address))]
-    async fn ensure_loopback(address: IpAddr) -> Result<()> {
+    async fn ensure_loopback(_address: IpAddr) -> Result<()> {
         Ok(())
     }
 
     #[cfg(not(target_os = "macos"))]
     #[instrument(skip(address))]
-    async fn drop_loopback(address: IpAddr) -> Result<()> {
+    async fn drop_loopback(_address: IpAddr) -> Result<()> {
         Ok(())
     }
 }
