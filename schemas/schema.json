@@ -17,11 +17,15 @@
           "$ref": "#/$defs/Resource"
         }
       }
+    },
+    "loopback": {
+      "type": "string"
     }
   },
   "additionalProperties": false,
   "required": [
-    "groups"
+    "groups",
+    "loopback"
   ],
   "$defs": {
     "Ports": {
@@ -61,10 +65,7 @@
           ]
         },
         "namespace": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": "string"
         },
         "policy": {
           "anyOf": [
@@ -85,8 +86,9 @@
       },
       "additionalProperties": false,
       "required": [
-        "selector",
         "alias",
+        "namespace",
+        "selector",
         "ports"
       ]
     },
@@ -131,6 +133,23 @@
             "type": {
               "type": "string",
               "const": "deployment"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "match"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "match": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "const": "hostname"
             }
           },
           "additionalProperties": false,

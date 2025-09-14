@@ -4,7 +4,7 @@ use either::Either;
 
 use crate::{
     cnf::{self},
-    fwd::{self, Target},
+    fwd::{Forwarder, Target},
 };
 
 #[derive(Args)]
@@ -22,16 +22,24 @@ pub async fn init(
     let config = cnf::extract().await?;
 
     let resources = get_target(config, &target)?;
-    let context = match (config.context.as_deref(), context.as_deref()) {
-        (Some(_), Some(arg_context)) => Some(arg_context),
-        (Some(context), _) | (_, Some(context)) => Some(context),
-        _ => None,
-    };
+    let context = context.as_deref().or(config.context.as_deref());
 
-    fwd::init(resources, context).await
+    let mut forwarder = Forwarder::default()
+        .with_context(context)
+        .with_loopback(config.loopback);
+
+    match resources {
+        Either::Left(resource) => forwarder.forward(resource).await?,
+        Either::Right(resources) => forwarder.forward_all(resources).await?,
+    }
+
+    tokio::signal::ctrl_c().await?;
+    forwarder.shutdown().await?;
+
+    Ok(())
 }
 
-fn get_target<'a>(config: &'a cnf::schema::Config, target: &str) -> Result<Target<'a>> {
+fn get_target<'cnf>(config: &'cnf cnf::schema::Config, target: &str) -> Result<Target<'cnf>> {
     if let Some(resource) = config
         .groups
         .values()

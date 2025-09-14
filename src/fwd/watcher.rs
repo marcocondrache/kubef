@@ -24,17 +24,19 @@ use tracing::debug;
 
 use crate::cnf::schema::SelectorPolicy;
 
+type Object = PartialObjectMeta<Pod>;
+
 pub struct PodWatcher {
-    store: Store<PartialObjectMeta<Pod>>,
-    subscriber: ReflectHandle<PartialObjectMeta<Pod>>,
-    counter: Arc<AtomicUsize>,
+    store: Store<Object>,
+    subscriber: ReflectHandle<Object>,
+    counter: AtomicUsize,
     policy: SelectorPolicy,
     handle: JoinHandle<()>,
 }
 
 impl PodWatcher {
-    pub async fn new(api: Api<Pod>, selector: Selector, policy: SelectorPolicy) -> Result<Self> {
-        let config = watcher::Config::default().labels_from(&selector);
+    pub async fn new(api: Api<Pod>, selector: &Selector, policy: SelectorPolicy) -> Result<Self> {
+        let config = watcher::Config::default().labels_from(selector);
 
         let (store, writer) = reflector::store_shared(256);
 
@@ -57,17 +59,17 @@ impl PodWatcher {
         Ok(Self {
             store,
             subscriber,
-            counter: Arc::new(AtomicUsize::new(0)),
+            counter: AtomicUsize::new(0),
             policy,
             handle,
         })
     }
 
-    pub fn shutdown(&self) {
-        self.handle.abort();
+    pub fn is_empty(&self) -> bool {
+        self.store.is_empty()
     }
 
-    pub fn get(&self) -> Option<Arc<PartialObjectMeta<Pod>>> {
+    pub fn get(&self) -> Option<Arc<Object>> {
         if self.store.is_empty() {
             return None;
         }
@@ -85,7 +87,13 @@ impl PodWatcher {
         state.get(index).cloned()
     }
 
-    pub async fn next(&mut self) -> Result<Arc<PartialObjectMeta<Pod>>> {
+    pub async fn next(&mut self) -> Result<Arc<Object>> {
         self.subscriber.next().await.context("Cannot get next pod")
+    }
+}
+
+impl Drop for PodWatcher {
+    fn drop(&mut self) {
+        self.handle.abort();
     }
 }
