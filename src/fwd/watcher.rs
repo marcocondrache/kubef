@@ -7,7 +7,7 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use futures::StreamExt;
+use futures::{StreamExt, future::Select};
 use k8s_openapi::api::{
     apps::v1::Deployment,
     core::v1::{Pod, Service},
@@ -104,14 +104,7 @@ impl Drop for Watcher {
 
 pub async fn select(client: &Client, resource: &Resource) -> Result<Selector> {
     match &resource.selector {
-        ResourceSelector::Label(labels) => {
-            let result = labels
-                .iter()
-                .map(|(k, v)| Expression::In(k.to_owned(), [v.to_owned()].into()))
-                .collect::<Selector>();
-
-            Ok(result)
-        }
+        ResourceSelector::Label(labels) => Ok(Selector::from_iter(labels.clone())),
         ResourceSelector::Deployment(name) => {
             let deployment = client
                 .get::<Deployment>(name, &Namespace::from(resource.namespace.clone()))
@@ -119,29 +112,21 @@ pub async fn select(client: &Client, resource: &Resource) -> Result<Selector> {
 
             let selector = deployment.spec.context("Deployment has no spec")?.selector;
 
-            let result = selector
-                .match_labels
-                .context("Deployment has no selector")?
-                .into_iter()
-                .map(|(k, v)| Expression::In(k, [v].into()))
-                .collect::<Selector>();
-
-            Ok(result)
+            Ok(selector.try_into()?)
         }
         ResourceSelector::Service(name) => {
             let service = client
                 .get::<Service>(name, &Namespace::from(resource.namespace.clone()))
                 .await?;
 
-            let selector = service.spec.context("Service has no spec")?.selector;
+            let selector = service
+                .spec
+                .context("Service has no spec")?
+                .selector
+                .context("Service has no selector")?;
 
-            let result = selector
-                .context("Service has no selector")?
-                .into_iter()
-                .map(|(k, v)| Expression::In(k, [v].into()))
-                .collect::<Selector>();
-
-            Ok(result)
+            // TODO: it's a hack, kube-rs does something horrible behind the scenes
+            Ok(Selector::from_iter(selector))
         }
     }
 }
