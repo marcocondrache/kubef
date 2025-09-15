@@ -83,12 +83,9 @@ impl SocketPool {
     }
 
     #[cfg(target_os = "macos")]
-    #[instrument(skip(address))]
+    #[instrument()]
     async fn ensure_loopback(address: IpAddr) -> Result<()> {
         use tokio::process::Command;
-        use tracing::debug;
-
-        debug!("Ensuring loopback: {}", address.to_string());
 
         let exit = Command::new("/sbin/ifconfig")
             .args(["lo0", "alias", &address.to_string()])
@@ -96,12 +93,12 @@ impl SocketPool {
             .await?;
 
         exit.success()
-            .then(|| Ok(()))
-            .ok_or_else(|| anyhow::anyhow!("Failed to ensure loopback"))?
+            .then_some(())
+            .ok_or(anyhow::anyhow!("Failed to ensure loopback"))
     }
 
     #[cfg(target_os = "macos")]
-    #[instrument(skip(address))]
+    #[instrument()]
     async fn drop_loopback(address: IpAddr) -> Result<()> {
         use tokio::process::Command;
 
@@ -111,18 +108,16 @@ impl SocketPool {
             .await?;
 
         exit.success()
-            .then(|| Ok(()))
-            .ok_or_else(|| anyhow::anyhow!("Failed to drop loopback"))?
+            .then_some(())
+            .ok_or(anyhow::anyhow!("Failed to drop loopback"))
     }
 
     #[cfg(not(target_os = "macos"))]
-    #[instrument(skip(_address))]
     async fn ensure_loopback(_address: IpAddr) -> Result<()> {
         Ok(())
     }
 
     #[cfg(not(target_os = "macos"))]
-    #[instrument(skip(_address))]
     async fn drop_loopback(_address: IpAddr) -> Result<()> {
         Ok(())
     }
