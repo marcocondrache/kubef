@@ -7,7 +7,7 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use futures::{StreamExt, future::Select};
+use futures::StreamExt;
 use k8s_openapi::api::{
     apps::v1::Deployment,
     core::v1::{Pod, Service},
@@ -16,7 +16,7 @@ use kube::{
     Api, Client,
     api::PartialObjectMeta,
     client::scope::Namespace,
-    core::{Expression, Selector},
+    core::Selector,
     runtime::{
         WatchStreamExt, predicates,
         reflector::{self, ReflectHandle, Store},
@@ -40,10 +40,9 @@ pub struct Watcher {
 
 impl Watcher {
     pub async fn new(api: Api<Pod>, selector: &Selector, policy: SelectorPolicy) -> Result<Self> {
-        let config = watcher::Config::default().labels_from(selector);
-
         let (store, writer) = reflector::store_shared(256);
 
+        let config = watcher::Config::default().labels_from(selector);
         let subscriber = writer.subscribe().context("Failed to create subscriber")?;
 
         let handle = tokio::spawn(
@@ -110,9 +109,13 @@ pub async fn select(client: &Client, resource: &Resource) -> Result<Selector> {
                 .get::<Deployment>(name, &Namespace::from(resource.namespace.clone()))
                 .await?;
 
-            let selector = deployment.spec.context("Deployment has no spec")?.selector;
+            let selector = deployment
+                .spec
+                .context("Deployment has no spec")?
+                .selector
+                .try_into()?;
 
-            Ok(selector.try_into()?)
+            Ok(selector)
         }
         ResourceSelector::Service(name) => {
             let service = client
