@@ -17,6 +17,7 @@ tracing = "0.1.41"
 schemars = "1.0.4"
 anyhow = "1.0.99"
 either = "1.15.0"
+rcgen = "0.14.4"
 xdg = "3.0.0"
 
 ipnet = { version = "2.11.0", features = ["serde"] }
@@ -25,6 +26,7 @@ serde_yaml_ng = { version = "0.9" }
 clap = { version = "4.5.47", features = ["derive"] }
 tokio = { version = "1.47.1", features = ["full"] }
 tokio-util = { version = "0.7.16", features = ["rt"] }
+tokio-rustls = { version = "0.26.2" }
 tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
 k8s-openapi = { version = "0.26.0", features = ["latest"] }
 kube = { version = "2.0.1", features = [

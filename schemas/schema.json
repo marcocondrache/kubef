@@ -82,6 +82,16 @@
         },
         "selector": {
           "$ref": "#/$defs/ResourceSelector"
+        },
+        "tls": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Tls"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "additionalProperties": false,
@@ -166,6 +176,10 @@
         "sticky",
         "roundrobin"
       ]
+    },
+    "Tls": {
+      "type": "object",
+      "additionalProperties": false
     }
   }
 }

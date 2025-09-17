@@ -1,6 +1,8 @@
 use anyhow::Result;
 use clap::Args;
 use either::Either;
+use rcgen::{CertificateParams, CertifiedKey, KeyPair};
+use tokio::task;
 
 use crate::{
     cnf::{self},
@@ -24,9 +26,12 @@ pub async fn init(
     let resources = get_target(config, &target)?;
     let context = context.as_deref().or(config.context.as_deref());
 
+    let certificate = task::spawn_blocking(move || get_certificate(resources)).await?;
+
     let forwarder = Forwarder::default()
         .with_context(context)
-        .with_loopback(config.loopback);
+        .with_loopback(config.loopback)
+        .with_certificate(certificate.ok());
 
     match resources {
         Either::Left(resource) => forwarder.forward(resource).await?,
@@ -37,6 +42,24 @@ pub async fn init(
     forwarder.shutdown().await?;
 
     Ok(())
+}
+
+fn get_certificate(target: Target) -> Result<CertifiedKey<KeyPair>> {
+    let names = match target {
+        Either::Left(resource) => vec![resource.alias.clone()],
+        Either::Right(resources) => resources
+            .iter()
+            .map(|resource| resource.alias.clone())
+            .collect::<Vec<_>>(),
+    };
+
+    let key = KeyPair::generate()?;
+    let cert = CertificateParams::new(names)?.self_signed(&key)?;
+
+    Ok(CertifiedKey {
+        cert,
+        signing_key: key,
+    })
 }
 
 fn get_target<'cnf>(config: &'cnf cnf::schema::Config, target: &str) -> Result<Target<'cnf>> {

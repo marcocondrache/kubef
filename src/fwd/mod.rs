@@ -13,6 +13,7 @@ use futures::future;
 use ipnet::IpNet;
 use k8s_openapi::api::core::v1::Pod;
 use kube::{Api, ResourceExt};
+use rcgen::{CertifiedKey, KeyPair};
 use tokio::net::{TcpSocket, TcpStream};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 use tracing::{Level, debug, info, instrument};
@@ -30,9 +31,15 @@ pub struct Forwarder<'ctx> {
     tracker: TaskTracker,
     token: CancellationToken,
     context: Option<&'ctx str>,
+    certificate: Option<CertifiedKey<KeyPair>>,
 }
 
 impl<'ctx> Forwarder<'ctx> {
+    pub fn with_certificate(mut self, certificate: Option<CertifiedKey<KeyPair>>) -> Self {
+        self.certificate = certificate;
+        self
+    }
+
     pub fn with_context(mut self, context: impl Into<Option<&'ctx str>>) -> Self {
         self.context = context.into();
         self
@@ -65,6 +72,11 @@ impl<'ctx> Forwarder<'ctx> {
 
         let api = Api::<Pod>::namespaced(client.clone(), &resource.namespace);
         let api_ptr = Arc::new(api.clone());
+
+        let certs = self.certificate.context("context")?;
+        let config = tokio_rustls::rustls::ServerConfig::builder()
+            .with_no_client_auth()
+            .with_single_cert(certs.into(), key)?;
 
         info!(
             "Listening TCP on {} forwarded to {}",

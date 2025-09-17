@@ -22,7 +22,12 @@ pub struct Resource {
     pub policy: Option<SelectorPolicy>,
     pub selector: ResourceSelector,
     pub ports: Ports,
+    pub tls: Option<Tls>,
 }
+
+#[derive(Serialize, Deserialize, Clone, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct Tls {}
 
 #[derive(Serialize, Deserialize, Clone, Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]
