@@ -18,6 +18,7 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 use tracing::{Level, debug, info, instrument};
 
 pub mod clients;
+pub mod proxy;
 pub mod sockets;
 pub mod watcher;
 

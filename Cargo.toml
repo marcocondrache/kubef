@@ -12,6 +12,8 @@ authors = [
 ]
 
 [dependencies]
+leon = "3.0.2"
+nanoid = "0.4.0"
 futures = "0.3.31"
 tracing = "0.1.41"
 schemars = "1.0.4"
@@ -35,7 +37,6 @@ kube = { version = "2.0.1", features = [
     "unstable-runtime",
     "unstable-client",
 ] }
-leon = "3.0.2"
 
 [build-dependencies]
 schemars = "1.0.4"

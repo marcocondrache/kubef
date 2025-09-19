@@ -1,51 +1,23 @@
-use crate::fwd::clients::ClientPool;
+use std::{net::SocketAddr, sync::Arc};
+
+use crate::fwd::{clients::ClientPool, forward, proxy::Proxy};
 use anyhow::Result;
 use clap::Args;
 use k8s_openapi::api::core::v1::Pod;
-use kube::{Api, api::PostParams};
-use leon::Template;
-
-static POD_TEMPLATE: Template<'_> = leon::template!(
-    r#"
-  apiVersion: v1
-  kind: Pod
-  metadata:
-    name: kubef-{pod_id}
-    labels:
-      kubef.io/id: {pod_id}
-      kubef.io/proxy: "true"
-  spec:
-    containers:
-      - name: socat
-        image: {pod_image}
-        command: 
-          - socat
-          - {protocol}-LISTEN:{pod_port},fork
-          - {protocol}:{remote_ip}:{remote_port}
-"#
-);
+use kube::Api;
+use tokio::net::TcpListener;
+use tokio_util::sync::CancellationToken;
 
 #[derive(Args)]
 pub struct ProxyCommandArguments {
-    #[arg(
-        short,
-        long,
-        default_value = "alpine/socat:latest",
-        help = "Socat image to use"
-    )]
-    pub image: String,
-
     #[arg(short, long, help = "Namespace to use")]
     pub namespace: Option<String>,
 
-    #[arg(short, long, help = "Local port to listen on")]
-    pub pod_port: u16,
+    #[arg(short, long, help = "Local address to listen on")]
+    pub bind: SocketAddr,
 
-    #[arg(short, long, help = "Remote port to forward to")]
-    pub remote_port: u16,
-
-    #[arg(short, long, help = "Remote IP to forward to")]
-    pub remote_ip: String,
+    #[arg(short, long, help = "Remote address to forward to")]
+    pub target: SocketAddr,
 
     #[arg(short, long, default_value = "TCP", help = "Protocol to use")]
     pub protocol: String,
@@ -56,13 +28,11 @@ pub struct ProxyCommandArguments {
 
 pub async fn init(
     ProxyCommandArguments {
-        context,
-        image,
-        pod_port,
-        remote_port,
-        remote_ip,
+        bind,
+        target,
         protocol,
         namespace,
+        context,
         ..
     }: ProxyCommandArguments,
 ) -> Result<()> {
@@ -72,22 +42,40 @@ pub async fn init(
         None => pool.get_default().await?,
     };
 
+    let token = CancellationToken::new();
     let namespace = namespace.as_deref().unwrap_or(client.default_namespace());
+    let socket = TcpListener::bind(bind).await?;
     let api = Api::<Pod>::namespaced(client.clone(), namespace);
+    let api_ptr = Arc::new(api.clone());
+    let proxy = Proxy::new(api);
+    let name = format!("kubef-{}", proxy.id);
 
-    let parameters = [
-        ("pod_id", "1"),
-        ("pod_image", &image),
-        ("pod_port", &pod_port.to_string()),
-        ("remote_port", &remote_port.to_string()),
-        ("remote_ip", &remote_ip),
-        ("protocol", &protocol),
-    ];
+    // TODO: horrible hack
+    let future = || {
+        let token = token.clone();
 
-    let manifest = POD_TEMPLATE.render(&parameters)?;
-    let pod = serde_json::from_str::<Pod>(&manifest)?;
+        async move {
+            while let Ok((connection, _)) = socket.accept().await {
+                let api = api_ptr.clone();
+                let token = token.child_token();
 
-    api.create(&PostParams::default(), &pod).await?;
+                tokio::spawn(forward(api, 8080, name.clone(), connection, token));
+            }
+        }
+    };
+
+    proxy.apply(bind.port(), &target, &protocol).await?;
+
+    tokio::spawn(future());
+
+    tokio::select! {
+        biased;
+        _ = tokio::signal::ctrl_c() => {},
+        _ = proxy.wait_until_exit() => {},
+    }
+
+    token.cancel();
+    proxy.delete().await?;
 
     Ok(())
 }
