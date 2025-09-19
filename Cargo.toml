@@ -23,7 +23,6 @@ xdg = "3.0.0"
 
 ipnet = { version = "2.11.0", features = ["serde"] }
 serde = { version = "1.0.219", features = ["derive"] }
-serde_json = { version = "1.0.145" }
 serde_yaml_ng = { version = "0.9" }
 clap = { version = "4.5.47", features = ["derive"] }
 tokio = { version = "1.47.1", features = ["full"] }
