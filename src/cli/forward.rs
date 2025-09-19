@@ -3,10 +3,11 @@ use clap::Args;
 use either::Either;
 use rcgen::{CertificateParams, CertifiedKey, KeyPair};
 use tokio::task;
+use tokio_rustls::rustls::crypto::{CryptoProvider, aws_lc_rs};
 
 use crate::{
     cnf::{self},
-    fwd::{Forwarder, Target},
+    fwd::{Forwarder, Target, tls},
 };
 
 #[derive(Args)]
@@ -21,17 +22,21 @@ pub struct ForwardCommandArguments {
 pub async fn init(
     ForwardCommandArguments { target, context }: ForwardCommandArguments,
 ) -> Result<()> {
+    aws_lc_rs::default_provider()
+        .install_default()
+        .map_err(|_| anyhow::anyhow!("Failed to install AWS LC RS"))?;
+
     let config = cnf::extract().await?;
 
     let resources = get_target(config, &target)?;
     let context = context.as_deref().or(config.context.as_deref());
 
-    let certificate = task::spawn_blocking(move || get_certificate(resources)).await?;
+    let certificate = tls::get_certificate(resources).await?;
 
     let forwarder = Forwarder::default()
         .with_context(context)
         .with_loopback(config.loopback)
-        .with_certificate(certificate.ok());
+        .with_certificate(Some(certificate));
 
     match resources {
         Either::Left(resource) => forwarder.forward(resource).await?,
@@ -42,24 +47,6 @@ pub async fn init(
     forwarder.shutdown().await?;
 
     Ok(())
-}
-
-fn get_certificate(target: Target) -> Result<CertifiedKey<KeyPair>> {
-    let names = match target {
-        Either::Left(resource) => vec![resource.alias.clone()],
-        Either::Right(resources) => resources
-            .iter()
-            .map(|resource| resource.alias.clone())
-            .collect::<Vec<_>>(),
-    };
-
-    let key = KeyPair::generate()?;
-    let cert = CertificateParams::new(names)?.self_signed(&key)?;
-
-    Ok(CertifiedKey {
-        cert,
-        signing_key: key,
-    })
 }
 
 fn get_target<'cnf>(config: &'cnf cnf::schema::Config, target: &str) -> Result<Target<'cnf>> {

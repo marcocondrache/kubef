@@ -15,11 +15,13 @@ use k8s_openapi::api::core::v1::Pod;
 use kube::{Api, ResourceExt};
 use rcgen::{CertifiedKey, KeyPair};
 use tokio::net::{TcpSocket, TcpStream};
+use tokio_rustls::{TlsAcceptor, server::TlsStream};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 use tracing::{Level, debug, info, instrument};
 
 mod clients;
 mod sockets;
+pub mod tls;
 mod watcher;
 
 pub type Target<'a> = Either<&'a Resource, &'a [Resource]>;
@@ -31,11 +33,11 @@ pub struct Forwarder<'ctx> {
     tracker: TaskTracker,
     token: CancellationToken,
     context: Option<&'ctx str>,
-    certificate: Option<CertifiedKey<KeyPair>>,
+    certificate: Option<&'static CertifiedKey<KeyPair>>,
 }
 
 impl<'ctx> Forwarder<'ctx> {
-    pub fn with_certificate(mut self, certificate: Option<CertifiedKey<KeyPair>>) -> Self {
+    pub fn with_certificate(mut self, certificate: Option<&'static CertifiedKey<KeyPair>>) -> Self {
         self.certificate = certificate;
         self
     }
@@ -73,10 +75,20 @@ impl<'ctx> Forwarder<'ctx> {
         let api = Api::<Pod>::namespaced(client.clone(), &resource.namespace);
         let api_ptr = Arc::new(api.clone());
 
-        let certs = self.certificate.context("context")?;
+        let certs = self.certificate.ok_or(anyhow::anyhow!("No certificate"))?;
+
+        let chain = certs.cert.clone();
+        let key = certs
+            .signing_key
+            .serialized_der()
+            .try_into()
+            .map_err(|e| anyhow::anyhow!("Failed to convert key: {}", e))?;
+
         let config = tokio_rustls::rustls::ServerConfig::builder()
             .with_no_client_auth()
-            .with_single_cert(certs.into(), key)?;
+            .with_single_cert(vec![chain.into()], key)?;
+
+        let acceptor = TlsAcceptor::from(Arc::new(config));
 
         info!(
             "Listening TCP on {} forwarded to {}",
@@ -86,37 +98,44 @@ impl<'ctx> Forwarder<'ctx> {
 
         // TODO: How do we capture the error?
         let future = async move {
-            let selector = watcher::select(&client, resource).await?;
-            let mut watcher = watcher::Watcher::new(api, &selector, policy).await?;
+            let res = async move {
+                let selector = watcher::select(&client, resource).await?;
+                let mut watcher = watcher::Watcher::new(api, &selector, policy).await?;
 
-            loop {
-                tokio::select! {
-                    biased;
-                    () = token.cancelled() => break,
-                    // Wait for next pod before accepting new connections
-                    _ = watcher.next(), if watcher.is_empty() => {},
-                    Ok((connection, addr)) = server.accept() => {
-                        let api = api_ptr.clone();
+                loop {
+                    tokio::select! {
+                        biased;
+                        () = token.cancelled() => break,
+                        // Wait for next pod before accepting new connections
+                        _ = watcher.next(), if watcher.is_empty() => {},
+                        Ok((connection, addr)) = server.accept() => {
+                            let stream = acceptor.accept(connection).await?;
+                            let api = api_ptr.clone();
 
-                        let Some(pod) = watcher.get() else { continue };
+                            let Some(pod) = watcher.get() else { continue };
 
-                        let pod_name = pod.name_any();
-                        let pod_port = resource.ports.remote;
+                            let pod_name = pod.name_any();
+                            let pod_port = resource.ports.remote;
 
-                        info!(
-                            "Forwarding connection from {} to {}",
-                            addr,
-                            pod_name
-                        );
+                            info!(
+                                "Forwarding connection from {} to {}",
+                                addr,
+                                pod_name
+                            );
 
-                        tracker.spawn(forward(api, pod_port, pod_name, connection, token.child_token()));
+                            tracker.spawn(forward(api, pod_port, pod_name, stream, token.child_token()));
+                        }
                     }
                 }
-            }
 
-            drop(ltoken);
+                drop(ltoken);
 
-            Ok(())
+                Ok(())
+            }.await;
+
+            debug!("Forwarder future spawned: {:?}", res);
+
+            res
         };
 
         Ok(future)
@@ -154,12 +173,12 @@ pub async fn forward(
     api: Arc<Api<Pod>>,
     pod_port: u16,
     pod_name: impl AsRef<str>,
-    mut connection: TcpStream,
+    mut connection: TlsStream<TcpStream>,
     token: CancellationToken,
 ) -> Result<()> {
     // Optimization
-    connection.set_nodelay(true)?;
-    connection.set_linger(None)?;
+    // connection.get_mut().set_nodelay(true)?;
+    // connection.get_mut().set_linger(None)?;
 
     debug!("Opening upstream connection to {}", pod_name.as_ref());
 
