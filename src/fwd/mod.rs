@@ -17,9 +17,9 @@ use tokio::net::{TcpSocket, TcpStream};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 use tracing::{Level, debug, info, instrument};
 
-mod clients;
-mod sockets;
-mod watcher;
+pub mod clients;
+pub mod sockets;
+pub mod watcher;
 
 pub type Target<'a> = Either<&'a Resource, &'a [Resource]>;
 

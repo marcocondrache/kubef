@@ -7,6 +7,7 @@ use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberI
 use crate::env::{LOGO, PKG_NAME, PKG_RELEASE};
 
 mod forward;
+mod proxy;
 
 #[derive(Parser)]
 #[command(name = PKG_NAME, bin_name = "kubef")]
@@ -24,6 +25,8 @@ struct Cli {
 enum Commands {
     #[command(about = "Forward a resource")]
     Forward(forward::ForwardCommandArguments),
+    #[command(about = "Proxy an internal ip address")]
+    Proxy(proxy::ProxyCommandArguments),
 }
 
 pub async fn init() -> ExitCode {
@@ -41,6 +44,7 @@ pub async fn init() -> ExitCode {
 
     let output = match args.command {
         Some(Commands::Forward(args)) => forward::init(args).await,
+        Some(Commands::Proxy(args)) => proxy::init(args).await,
         None => {
             if let Some(target) = args.target {
                 forward::init(forward::ForwardCommandArguments {
