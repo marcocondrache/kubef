@@ -53,8 +53,8 @@ pub async fn init(
     proxy.spawn(bind_addr.port(), &target, &protocol).await?;
 
     tracker.spawn(bind(
-        proxy.id.clone(),
         api_ptr,
+        proxy.get_name(),
         socket,
         token.child_token(),
         tracker.clone(),
@@ -77,14 +77,12 @@ pub async fn init(
 }
 
 pub async fn bind(
-    id: String,
     api: Arc<Api<Pod>>,
+    name: String,
     socket: TcpListener,
     token: CancellationToken,
     tracker: TaskTracker,
 ) -> Result<()> {
-    let name = format!("kubef-{id}");
-
     loop {
         tokio::select! {
             biased;

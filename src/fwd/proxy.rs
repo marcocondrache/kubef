@@ -15,12 +15,16 @@ static ALPHABET: [char; 16] = [
 ];
 
 pub struct Proxy {
-    pub id: String,
-
+    id: String,
     api: Api<Pod>,
 }
 
 impl Proxy {
+    const NAME_PREFIX: &str = "kubef-";
+
+    const IMAGE: &str = "alpine/socat:latest";
+    const IMAGE_BIN: &str = "socat";
+
     pub fn new(api: Api<Pod>) -> Self {
         Self {
             id: nanoid!(6, &ALPHABET),
@@ -30,10 +34,14 @@ impl Proxy {
 
     pub async fn abort(&self) -> Result<()> {
         self.api
-            .delete(&format!("kubef-{}", self.id), &DeleteParams::default())
+            .delete(&self.get_name(), &DeleteParams::default())
             .await?;
 
         Ok(())
+    }
+
+    pub fn get_name(&self) -> String {
+        format!("{}{}", Self::NAME_PREFIX, self.id)
     }
 
     pub async fn wait_until_exit(&self) -> Result<()> {
@@ -62,7 +70,7 @@ impl Proxy {
         // TODO: Can we improve this?
         let pod = Pod {
             metadata: ObjectMeta {
-                name: Some(format!("kubef-{}", self.id)),
+                name: Some(self.get_name()),
                 labels: Some(BTreeMap::from([
                     ("kubef.io/id".to_string(), self.id.clone()),
                     ("kubef.io/proxy".to_string(), "true".to_string()),
@@ -72,8 +80,8 @@ impl Proxy {
             spec: Some(PodSpec {
                 containers: vec![Container {
                     name: "socat".to_string(),
-                    image: Some("alpine/socat:latest".to_string()),
-                    command: Some(vec!["socat".to_string(), source, destination]),
+                    image: Some(Self::IMAGE.to_string()),
+                    command: Some(vec![Self::IMAGE_BIN.to_string(), source, destination]),
                     ..Default::default()
                 }],
                 ..Default::default()
@@ -90,11 +98,8 @@ impl Proxy {
 impl Drop for Proxy {
     fn drop(&mut self) {
         let api = self.api.clone();
-        let id = self.id.clone();
+        let name = self.get_name();
 
-        tokio::spawn(async move {
-            api.delete(&format!("kubef-{id}"), &DeleteParams::default())
-                .await
-        });
+        tokio::spawn(async move { api.delete(&name, &DeleteParams::default()).await });
     }
 }
