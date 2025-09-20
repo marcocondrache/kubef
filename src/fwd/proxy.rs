@@ -1,37 +1,17 @@
-use std::net::SocketAddr;
+use std::{collections::BTreeMap, net::SocketAddr};
 
 use anyhow::Result;
 use futures::TryStreamExt;
-use k8s_openapi::api::core::v1::Pod;
+use k8s_openapi::api::core::v1::{Container, Pod, PodSpec};
 use kube::{
     Api,
-    api::{DeleteParams, PostParams, WatchEvent, WatchParams},
+    api::{DeleteParams, ObjectMeta, PostParams, WatchEvent, WatchParams},
 };
-use leon::Template;
 use nanoid::nanoid;
 
 static ALPHABET: [char; 16] = [
     '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', 'a', 'b', 'c', 'd', 'e', 'f',
 ];
-
-// TODO: use compile-parsing template
-static POD_TEMPLATE: &str = r#"
-  apiVersion: v1
-  kind: Pod
-  metadata:
-    name: kubef-{id}
-    labels:
-      kubef.io/id: {id}
-      kubef.io/proxy: "true"
-  spec:
-    containers:
-      - name: socat
-        image: alpine/socat:latest
-        command: 
-          - socat
-          - {protocol}-LISTEN:{port},fork
-          - {protocol}:{remote_ip}:{remote_port}
-"#;
 
 pub struct Proxy {
     pub id: String,
@@ -72,19 +52,30 @@ impl Proxy {
     }
 
     pub async fn apply(&self, port: u16, target: &SocketAddr, protocol: &str) -> Result<()> {
-        // TODO: fix refs
-        let parameters = [
-            ("id", self.id.as_str()),
-            ("port", &port.to_string()),
-            ("remote_port", &target.port().to_string()),
-            ("remote_ip", &target.ip().to_string()),
-            ("protocol", protocol),
-        ];
+        let source = format!("{protocol}-LISTEN:{port},fork");
+        let destination = format!("{protocol}:{target}:{}", target.port());
 
-        let template = Template::parse(POD_TEMPLATE)?;
-        let manifest = template.render(&parameters)?;
-
-        let pod = serde_yaml_ng::from_str::<Pod>(&manifest)?;
+        // TODO: Can we improve this?
+        let pod = Pod {
+            metadata: ObjectMeta {
+                name: Some(format!("kubef-{}", self.id)),
+                labels: Some(BTreeMap::from([
+                    ("kubef.io/id".to_string(), self.id.clone()),
+                    ("kubef.io/proxy".to_string(), "true".to_string()),
+                ])),
+                ..Default::default()
+            },
+            spec: Some(PodSpec {
+                containers: vec![Container {
+                    name: "socat".to_string(),
+                    image: Some("alpine/socat:latest".to_string()),
+                    command: Some(vec!["socat".to_string(), source, destination]),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            status: None,
+        };
 
         self.api.create(&PostParams::default(), &pod).await?;
 
