@@ -1,7 +1,7 @@
 use anyhow::{Context, Ok, Result};
+
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use tokio::{net::TcpSocket, sync::RwLock};
-use tracing::instrument;
 
 use ipnet::{IpAddrRange, IpNet};
 
@@ -83,7 +83,6 @@ impl SocketPool {
     }
 
     #[cfg(target_os = "macos")]
-    #[instrument()]
     async fn ensure_loopback(address: IpAddr) -> Result<()> {
         use tokio::process::Command;
 
@@ -98,7 +97,6 @@ impl SocketPool {
     }
 
     #[cfg(target_os = "macos")]
-    #[instrument()]
     async fn drop_loopback(address: IpAddr) -> Result<()> {
         use tokio::process::Command;
 
@@ -113,12 +111,16 @@ impl SocketPool {
     }
 
     #[cfg(not(target_os = "macos"))]
-    async fn ensure_loopback(_address: IpAddr) -> Result<()> {
-        Ok(())
+    fn ensure_loopback(_address: IpAddr) -> impl Future<Output = Result<()>> {
+        use futures::future;
+
+        future::ready(Ok(()))
     }
 
     #[cfg(not(target_os = "macos"))]
-    async fn drop_loopback(_address: IpAddr) -> Result<()> {
-        Ok(())
+    fn drop_loopback(_address: IpAddr) -> impl Future<Output = Result<()>> {
+        use futures::future;
+
+        future::ready(Ok(()))
     }
 }

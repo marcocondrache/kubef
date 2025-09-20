@@ -1,6 +1,6 @@
 [package]
 name = "kubef"
-version = "2.0.1"
+version = "2.1.0"
 edition = "2024"
 license = "MIT"
 readme = "README.md"
@@ -12,6 +12,7 @@ authors = [
 ]
 
 [dependencies]
+nanoid = "0.4.0"
 futures = "0.3.31"
 tracing = "0.1.41"
 schemars = "1.0.4"
