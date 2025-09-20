@@ -8,6 +8,7 @@ use kube::{
     api::{DeleteParams, ObjectMeta, PostParams, WatchEvent, WatchParams},
 };
 use nanoid::nanoid;
+use tracing::{debug, instrument};
 
 static ALPHABET: [char; 16] = [
     '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', 'a', 'b', 'c', 'd', 'e', 'f',
@@ -27,7 +28,7 @@ impl Proxy {
         }
     }
 
-    pub async fn delete(&self) -> Result<()> {
+    pub async fn abort(&self) -> Result<()> {
         self.api
             .delete(&format!("kubef-{}", self.id), &DeleteParams::default())
             .await?;
@@ -44,16 +45,19 @@ impl Proxy {
         while let Ok(Some(event)) = stream.try_next().await {
             match event {
                 WatchEvent::Error(_) | WatchEvent::Deleted(_) => return Ok(()),
-                _ => {}
+                _ => {
+                    debug!("Proxy {} received event: {:?}", self.id, event);
+                }
             }
         }
 
         Ok(())
     }
 
-    pub async fn apply(&self, port: u16, target: &SocketAddr, protocol: &str) -> Result<()> {
+    #[instrument(skip(self), fields(port = %port, target = %target, protocol = %protocol))]
+    pub async fn spawn(&self, port: u16, target: &SocketAddr, protocol: &str) -> Result<()> {
         let source = format!("{protocol}-LISTEN:{port},fork");
-        let destination = format!("{protocol}:{target}:{}", target.port());
+        let destination = format!("{protocol}:{target}");
 
         // TODO: Can we improve this?
         let pod = Pod {
