@@ -6,11 +6,17 @@ use crate::fwd::{
     proxy::{Proxy, ProxyDestination},
 };
 use anyhow::Result;
-use clap::Args;
+use clap::{Args, ValueEnum};
 use k8s_openapi::api::core::v1::Pod;
 use kube::Api;
 use tokio::net::TcpListener;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
+
+#[derive(ValueEnum, Clone)]
+pub enum ProxyProtocol {
+    Tcp,
+    Udp,
+}
 
 #[derive(Args)]
 pub struct ProxyCommandArguments {
@@ -23,6 +29,9 @@ pub struct ProxyCommandArguments {
     #[arg(short, long, help = "Remote address to forward to")]
     pub target: SocketAddr,
 
+    #[arg(short, long, default_value = "tcp", help = "Protocol to use")]
+    pub protocol: ProxyProtocol,
+
     #[arg(short, long, help = "The kubeconfig context to use")]
     pub context: Option<String>,
 }
@@ -33,6 +42,7 @@ pub async fn init(
         target,
         namespace,
         context,
+        protocol,
         ..
     }: ProxyCommandArguments,
 ) -> Result<()> {
@@ -50,7 +60,12 @@ pub async fn init(
     let api_ptr = Arc::new(api.clone());
     let proxy = Proxy::new(api);
 
-    proxy.spawn(&ProxyDestination::Tcp(target)).await?;
+    let destination = match protocol {
+        ProxyProtocol::Tcp => ProxyDestination::Tcp(target),
+        ProxyProtocol::Udp => ProxyDestination::Udp(target),
+    };
+
+    proxy.spawn(&destination).await?;
 
     tracker.spawn(bind(
         api_ptr,
