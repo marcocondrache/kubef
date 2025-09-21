@@ -54,6 +54,16 @@ impl Proxy {
         }
     }
 
+    #[inline]
+    pub fn is_spawned(&self) -> bool {
+        self.permit.load(Ordering::Relaxed)
+    }
+
+    #[inline]
+    pub fn get_name(&self) -> String {
+        format!("{}{}", Self::NAME_PREFIX, self.id)
+    }
+
     pub async fn abort(&self) -> Result<()> {
         if !self.permit.load(Ordering::Relaxed) {
             return Err(anyhow::anyhow!("Proxy not spawned"));
@@ -68,12 +78,8 @@ impl Proxy {
         Ok(())
     }
 
-    pub fn get_name(&self) -> String {
-        format!("{}{}", Self::NAME_PREFIX, self.id)
-    }
-
     pub async fn wait_until_exit(&self) -> Result<()> {
-        if !self.permit.load(Ordering::Relaxed) {
+        if !self.is_spawned() {
             return Err(anyhow::anyhow!("Proxy not spawned"));
         }
 
@@ -96,7 +102,7 @@ impl Proxy {
 
     #[instrument(skip(self, destination))]
     pub async fn spawn(&self, destination: &ProxyDestination) -> Result<()> {
-        if self.permit.load(Ordering::Relaxed) {
+        if self.is_spawned() {
             return Err(anyhow::anyhow!("Proxy already spawned"));
         }
 
@@ -134,7 +140,7 @@ impl Proxy {
 
 impl Drop for Proxy {
     fn drop(&mut self) {
-        if !self.permit.load(Ordering::Relaxed) {
+        if !self.is_spawned() {
             return;
         }
 
