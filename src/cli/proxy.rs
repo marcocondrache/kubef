@@ -1,6 +1,10 @@
 use std::{net::SocketAddr, sync::Arc};
 
-use crate::fwd::{clients::ClientPool, forward, proxy::Proxy};
+use crate::fwd::{
+    Forwarder,
+    clients::ClientPool,
+    proxy::{Proxy, ProxyDestination},
+};
 use anyhow::Result;
 use clap::Args;
 use k8s_openapi::api::core::v1::Pod;
@@ -19,9 +23,6 @@ pub struct ProxyCommandArguments {
     #[arg(short, long, help = "Remote address to forward to")]
     pub target: SocketAddr,
 
-    #[arg(short, long, default_value = "TCP", help = "Protocol to use")]
-    pub protocol: String,
-
     #[arg(short, long, help = "The kubeconfig context to use")]
     pub context: Option<String>,
 }
@@ -30,7 +31,6 @@ pub async fn init(
     ProxyCommandArguments {
         bind: bind_addr,
         target,
-        protocol,
         namespace,
         context,
         ..
@@ -50,7 +50,7 @@ pub async fn init(
     let api_ptr = Arc::new(api.clone());
     let proxy = Proxy::new(api);
 
-    proxy.spawn(bind_addr.port(), &target, &protocol).await?;
+    proxy.spawn(&ProxyDestination::Tcp(target)).await?;
 
     tracker.spawn(bind(
         api_ptr,
@@ -69,7 +69,6 @@ pub async fn init(
     token.cancel();
     tracker.close();
 
-    // Ensure connections are closed before dropping the pod
     tracker.wait().await;
     proxy.abort().await?;
 
@@ -91,7 +90,7 @@ pub async fn bind(
                 let api = api.clone();
                 let token = token.child_token();
 
-                tracker.spawn(forward(api, 8080, name.clone(), connection, token));
+                tracker.spawn(Forwarder::upstream(api, Proxy::PORT, name.clone(), connection, token));
             }
         }
     }

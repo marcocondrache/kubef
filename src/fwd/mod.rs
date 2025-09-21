@@ -98,7 +98,7 @@ impl<'ctx> Forwarder<'ctx> {
                             pod_name
                         );
 
-                        tracker.spawn(forward(api, pod_port, pod_name, connection, token.child_token()));
+                        tracker.spawn(Forwarder::upstream(api, pod_port, pod_name, connection, token.child_token()));
                     }
                 }
             }
@@ -138,53 +138,55 @@ impl<'ctx> Forwarder<'ctx> {
     }
 }
 
-#[instrument(err(level = Level::WARN), skip(api, connection, token), fields(pod_name = %pod_name.as_ref()))]
-pub async fn forward(
-    api: Arc<Api<Pod>>,
-    pod_port: u16,
-    pod_name: impl AsRef<str>,
-    mut connection: TcpStream,
-    token: CancellationToken,
-) -> Result<()> {
-    // Optimization
-    connection.set_nodelay(true)?;
-    connection.set_linger(None)?;
+impl Forwarder<'_> {
+    #[instrument(err(level = Level::WARN), skip(api, connection, token), fields(pod_name = %pod_name.as_ref()))]
+    pub async fn upstream(
+        api: Arc<Api<Pod>>,
+        pod_port: u16,
+        pod_name: impl AsRef<str>,
+        mut connection: TcpStream,
+        token: CancellationToken,
+    ) -> Result<()> {
+        // Optimization
+        connection.set_nodelay(true)?;
+        connection.set_linger(None)?;
 
-    debug!("Opening upstream connection to {}", pod_name.as_ref());
+        debug!("Opening upstream connection to {}", pod_name.as_ref());
 
-    let ports = [pod_port];
-    let mut forwarding = api.portforward(pod_name.as_ref(), &ports).await?;
-    let mut upstream = forwarding
-        .take_stream(pod_port)
-        .context("Failed to take stream")?;
+        let ports = [pod_port];
+        let mut forwarding = api.portforward(pod_name.as_ref(), &ports).await?;
+        let mut upstream = forwarding
+            .take_stream(pod_port)
+            .context("Failed to take stream")?;
 
-    let closer = forwarding
-        .take_error(pod_port)
-        .context("Failed to take error stream")?;
+        let closer = forwarding
+            .take_error(pod_port)
+            .context("Failed to take error stream")?;
 
-    debug!("Upstream connection opened");
+        debug!("Upstream connection opened");
 
-    tokio::select! {
-        biased;
-        () = token.cancelled() => {},
-        Some(e) = closer => {
-            forwarding.abort();
+        tokio::select! {
+            biased;
+            () = token.cancelled() => {},
+            Some(e) = closer => {
+                forwarding.abort();
 
-            anyhow::bail!(e);
-        }
-        Err(e) = tokio::io::copy_bidirectional(&mut connection, &mut upstream) => {
-            forwarding.abort();
+                anyhow::bail!(e);
+            }
+            Err(e) = tokio::io::copy_bidirectional(&mut connection, &mut upstream) => {
+                forwarding.abort();
 
-            anyhow::bail!(e);
-        }
-    };
+                anyhow::bail!(e);
+            }
+        };
 
-    debug!("Going to gracefully drop upstream connection");
+        debug!("Going to gracefully drop upstream connection");
 
-    drop(upstream);
+        drop(upstream);
 
-    forwarding
-        .join()
-        .await
-        .context("Failed to conclude forward")
+        forwarding
+            .join()
+            .await
+            .context("Failed to conclude forward")
+    }
 }

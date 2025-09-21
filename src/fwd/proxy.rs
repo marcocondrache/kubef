@@ -14,6 +14,20 @@ static ALPHABET: [char; 16] = [
     '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', 'a', 'b', 'c', 'd', 'e', 'f',
 ];
 
+pub enum ProxyDestination {
+    Tcp(SocketAddr),
+    Udp(SocketAddr),
+}
+
+impl ProxyDestination {
+    pub fn to_socat_target(&self) -> String {
+        match self {
+            ProxyDestination::Tcp(target) => format!("TCP:{target}"),
+            ProxyDestination::Udp(target) => format!("UDP:{target}"),
+        }
+    }
+}
+
 pub struct Proxy {
     id: String,
     api: Api<Pod>,
@@ -24,6 +38,8 @@ impl Proxy {
 
     const IMAGE: &str = "alpine/socat:latest";
     const IMAGE_BIN: &str = "socat";
+
+    pub const PORT: u16 = 8080;
 
     pub fn new(api: Api<Pod>) -> Self {
         Self {
@@ -62,10 +78,10 @@ impl Proxy {
         Ok(())
     }
 
-    #[instrument(skip(self), fields(port = %port, target = %target, protocol = %protocol))]
-    pub async fn spawn(&self, port: u16, target: &SocketAddr, protocol: &str) -> Result<()> {
-        let source = format!("{protocol}-LISTEN:{port},fork");
-        let destination = format!("{protocol}:{target}");
+    #[instrument(skip(self, destination))]
+    pub async fn spawn(&self, destination: &ProxyDestination) -> Result<()> {
+        let source = format!("TCP-LISTEN:{},reuseaddr,fork", Self::PORT);
+        let destination = destination.to_socat_target();
 
         // TODO: Can we improve this?
         let pod = Pod {
