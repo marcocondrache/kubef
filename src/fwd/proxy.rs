@@ -1,4 +1,8 @@
-use std::{collections::BTreeMap, net::SocketAddr};
+use std::{
+    collections::BTreeMap,
+    net::SocketAddr,
+    sync::atomic::{AtomicBool, Ordering},
+};
 
 use anyhow::Result;
 use futures::TryStreamExt;
@@ -31,6 +35,7 @@ impl ProxyDestination {
 pub struct Proxy {
     id: String,
     api: Api<Pod>,
+    permit: AtomicBool,
 }
 
 impl Proxy {
@@ -45,13 +50,20 @@ impl Proxy {
         Self {
             id: nanoid!(6, &ALPHABET),
             api,
+            permit: AtomicBool::new(false),
         }
     }
 
     pub async fn abort(&self) -> Result<()> {
+        if !self.permit.load(Ordering::Relaxed) {
+            return Err(anyhow::anyhow!("Proxy not spawned"));
+        }
+
         self.api
             .delete(&self.get_name(), &DeleteParams::default())
             .await?;
+
+        self.permit.store(false, Ordering::Relaxed);
 
         Ok(())
     }
@@ -61,6 +73,10 @@ impl Proxy {
     }
 
     pub async fn wait_until_exit(&self) -> Result<()> {
+        if !self.permit.load(Ordering::Relaxed) {
+            return Err(anyhow::anyhow!("Proxy not spawned"));
+        }
+
         let params = WatchParams::default().labels(&format!("kubef.io/id={}", self.id));
         let stream = self.api.watch_metadata(&params, "0").await?;
 
@@ -80,6 +96,10 @@ impl Proxy {
 
     #[instrument(skip(self, destination))]
     pub async fn spawn(&self, destination: &ProxyDestination) -> Result<()> {
+        if self.permit.load(Ordering::Relaxed) {
+            return Err(anyhow::anyhow!("Proxy already spawned"));
+        }
+
         let source = format!("TCP-LISTEN:{},reuseaddr,fork", Self::PORT);
         let destination = destination.to_socat_target();
 
@@ -106,6 +126,7 @@ impl Proxy {
         };
 
         self.api.create(&PostParams::default(), &pod).await?;
+        self.permit.store(true, Ordering::Relaxed);
 
         Ok(())
     }
@@ -113,6 +134,10 @@ impl Proxy {
 
 impl Drop for Proxy {
     fn drop(&mut self) {
+        if !self.permit.load(Ordering::Relaxed) {
+            return;
+        }
+
         let api = self.api.clone();
         let name = self.get_name();
 
