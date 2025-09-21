@@ -18,6 +18,7 @@ static ALPHABET: [char; 16] = [
     '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', 'a', 'b', 'c', 'd', 'e', 'f',
 ];
 
+#[allow(dead_code)]
 pub enum ProxyDestination {
     Tcp(SocketAddr),
     Udp(SocketAddr),
