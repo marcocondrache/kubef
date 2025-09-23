@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 pub struct Config {
     pub context: Option<String>,
     pub groups: HashMap<String, Vec<Resource>>,
-    #[schemars(with = "String")]
+    #[schemars(with = "Option<String>")]
     pub loopback: Option<IpNet>,
 }
 
