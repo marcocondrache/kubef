@@ -16,7 +16,7 @@ nanoid = "0.4.0"
 futures = "0.3.31"
 tracing = "0.1.41"
 schemars = "1.0.4"
-anyhow = "1.0.99"
+anyhow = "1.0.100"
 either = "1.15.0"
 xdg = "3.0.0"
 
