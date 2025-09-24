@@ -52,8 +52,7 @@ fn get_target<'cnf>(config: &'cnf cnf::schema::Config, target: &str) -> Result<T
     match config.groups.get(target) {
         Some(resources) => Ok(Either::Right(resources)),
         None => Err(anyhow::anyhow!(
-            "No resources found for target '{}' in aliases or groups",
-            target
+            "No resources found for target '{target}' in aliases or groups"
         )),
     }
 }
