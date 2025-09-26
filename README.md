@@ -23,9 +23,9 @@ A fast, intelligent Kubernetes port forwarding tool with configuration-based res
 ### From source
 
 ```bash
-git clone <repository-url> && cd kubef
+git clone https://github.com/marcocondrache/kubef && cd kubef
 
-cargo install --path . --root ~/.local
+cargo install --path . --root /usr/local/bin
 ```
 
 ## Configuration
@@ -111,7 +111,7 @@ kubef web
 
 ### How It Works
 
-1. **Configuration oading** - `kubef` loads your configuration file and parses the resource definitions
+1. **Configuration loading** - `kubef` loads your configuration file and parses the resource definitions
 2. **Resource resolution** - Based on your target (alias or group), it identifies which resources to forward
 3. **Pod discovery** - For each resource, it uses the configured selector to find matching pods in the cluster
 4. **Port binding** - Creates local TCP listeners on the specified local ports

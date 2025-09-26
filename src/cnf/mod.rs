@@ -20,6 +20,10 @@ pub async fn extract() -> Result<&'static schema::Config> {
     let config = CNF
         .get_or_try_init(|| async {
             let parser = task::spawn_blocking(|| {
+                if !path.exists() {
+                    anyhow::bail!("Config file not found at {}", path.display());
+                }
+
                 let file = std::fs::File::open(path)?;
                 let config: schema::Config = serde_yaml_ng::from_reader(file)?;
 
