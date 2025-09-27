@@ -24,8 +24,18 @@ A fast, intelligent Kubernetes port forwarding tool with configuration-based res
 
 ```bash
 git clone https://github.com/marcocondrache/kubef && cd kubef
+cargo install --path .
+```
 
-cargo install --path . --root /usr/local/bin
+This installs `kubef` to `~/.cargo/bin/`. Make sure this directory is in your PATH.
+
+### Manual installation
+
+Alternatively, build and copy manually:
+
+```bash
+cargo build --release
+cp target/release/kubef /usr/local/bin/
 ```
 
 ## Configuration
@@ -46,7 +56,7 @@ groups:
         type: <selector_type>
         match: <selector_value>
       ports:
-        remote: <pod_port>
+        remote: <pod_port> # target port on the pod
         local: <local_port>
 ```
 
@@ -69,7 +79,7 @@ groups:
       ports:
         remote: 8080
         local: 3000
-        
+
     - alias: api
       namespace: production
       selector:
@@ -159,7 +169,7 @@ groups:
       ports:
         remote: 8000
         local: 8001
-        
+
   production:
     - alias: api
       namespace: production
