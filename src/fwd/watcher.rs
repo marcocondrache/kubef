@@ -83,7 +83,11 @@ impl Watcher {
             SelectorPolicy::RoundRobin => self.counter.fetch_add(1, Ordering::Relaxed),
         };
 
-        let index = counter % state.len();
+        let index = if state.len().is_power_of_two() {
+            counter & (state.len() - 1)
+        } else {
+            counter % state.len()
+        };
 
         debug!("Selecting pod {} of {}", index, state.len());
 
