@@ -8,7 +8,7 @@
 let
   manifest = lib.importTOML ./Cargo.toml;
 in
-rustPlatform.buildRustPackage rec {
+rustPlatform.buildRustPackage {
   pname = manifest.package.name;
   version = manifest.package.version;
 
@@ -18,7 +18,7 @@ rustPlatform.buildRustPackage rec {
 
   buildInputs = lib.optionals stdenv.hostPlatform.isDarwin [ libiconv ];
 
-  cargoHash = "sha256-+8o2z8SW+CflkJe55K+wY6bkBeJLQXspbebQhgsqX+U=";
+  cargoHash = "sha256-5fPdJs3gCdw2ljutYJSglpavKE4CK2XWnxH1Ne7BxjU=";
 
   meta = with lib; {
     description = "A tool to help managing kubernetes forwarders";
