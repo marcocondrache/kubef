@@ -43,7 +43,7 @@ serde = { version = "1.0.228", features = ["derive"] }
 ipnet = { version = "2.11.0", features = ["serde"] }
 
 [dev-dependencies]
-criterion = { version = "0.5", features = ["html_reports", "async_tokio"] }
+criterion = { version = "0.7", features = ["html_reports", "async_tokio"] }
 
 [profile.release]
 lto = true
