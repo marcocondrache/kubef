@@ -14,7 +14,7 @@ authors = [
 [dependencies]
 nanoid = "0.4.0"
 futures = "0.3.31"
-tracing = "0.1.41"
+tracing = "0.1.43"
 schemars = "1.0.4"
 anyhow = "1.0.100"
 either = "1.15.0"
