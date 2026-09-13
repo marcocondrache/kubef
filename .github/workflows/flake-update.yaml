@@ -3,7 +3,7 @@ name: Update flake.lock
 on:
   workflow_dispatch:
   schedule:
-    - cron: "9 1 * * 1" # monday @ 1:09
+    - cron: "9 1 * * 1"
 
 permissions:
   contents: write

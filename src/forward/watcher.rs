@@ -115,8 +115,6 @@ impl Drop for Watcher {
     }
 }
 
-/// Resolve the concrete container port number for `resource`, consulting the Kubernetes API when
-/// needed (named ports or service mapping).
 pub async fn resolve_port(client: &Client, resource: &Resource, config: &Config) -> Result<u16> {
     let effective_mapping = resource
         .ports
@@ -127,8 +125,6 @@ pub async fn resolve_port(client: &Client, resource: &Resource, config: &Config)
     let namespace = config::resolve_namespace(resource, config);
 
     let ResourceSelector::Service(svc_name) = &resource.selector else {
-        // Non-service selectors have no Service to consult; a numeric remote is
-        // the container port, a named remote is unsupported.
         return match &resource.ports.remote {
             PortSpec::Number(n) => Ok(*n),
             PortSpec::Named(_) => anyhow::bail!("named port resolution requires service selector"),
@@ -149,14 +145,7 @@ pub async fn resolve_port(client: &Client, resource: &Resource, config: &Config)
             let port = ports.iter().find(|p| p.port == i32::from(*n));
 
             match (effective_mapping, port) {
-                // The number matches a service port: follow its targetPort to the
-                // container port. (Under `container` mapping the number may be the
-                // service port as printed by `kubectl get svc` rather than the
-                // container port; resolving through the service is correct in
-                // both mappings.)
                 (_, Some(port)) => resolve_target_port(port, &service, client, namespace).await,
-                // No service port matches: service mapping requires one, container
-                // mapping falls back to treating the number as the container port.
                 (PortMapping::Service, None) => anyhow::bail!("Service port {n} not found"),
                 (PortMapping::Container, None) => Ok(*n),
             }
@@ -172,10 +161,6 @@ pub async fn resolve_port(client: &Client, resource: &Resource, config: &Config)
     }
 }
 
-/// Resolve a `ServicePort` to the concrete container port: an unset targetPort
-/// maps to the service port itself (k8s identity default), a numeric targetPort
-/// is used directly, and a named targetPort is looked up in the container ports
-/// of a pod matching the service selector.
 async fn resolve_target_port(
     port: &ServicePort,
     service: &Service,
@@ -247,7 +232,6 @@ pub async fn select(client: &Client, resource: &Resource, config: &Config) -> Re
                 .selector
                 .context("Service has no selector")?;
 
-            // TODO: it's a hack, kube-rs does something horrible behind the scenes
             Ok(Selector::from_iter(selector))
         }
     }

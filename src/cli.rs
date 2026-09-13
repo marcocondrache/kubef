@@ -27,9 +27,6 @@ const PKG_RELEASE: &str = env!("CARGO_PKG_VERSION");
 #[command(version = PKG_RELEASE, before_help = LOGO)]
 #[command(disable_version_flag = false, arg_required_else_help = true)]
 struct Cli {
-    // Phantom positional: gives the completion engine a hook to suggest resource
-    // aliases at the top level alongside subcommands. Never populated at runtime
-    // because preprocess_args() always injects the "forward" subcommand first.
     #[arg(value_name = "RESOURCE", hide = true, add = ArgValueCompleter::new(complete_targets))]
     target: Option<String>,
 
@@ -47,8 +44,6 @@ enum Commands {
 
 const KNOWN_SUBCOMMANDS: &[&str] = &["forward", "proxy", "help"];
 
-/// Injects `forward` before the target when the first arg is a resource alias rather than
-/// a subcommand or flag, preserving `kubef <target>` as a shorthand for `kubef forward <target>`.
 fn preprocess_args() -> Vec<String> {
     let args: Vec<String> = std::env::args().collect();
     match args.get(1) {
