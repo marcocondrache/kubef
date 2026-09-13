@@ -1,8 +1,8 @@
 use std::{net::SocketAddr, sync::Arc};
 
-use crate::fwd::{
-    Forwarder,
+use crate::{
     clients::ClientPool,
+    forward::Forwarder,
     proxy::{Proxy, ProxyDestination},
 };
 use anyhow::Result;

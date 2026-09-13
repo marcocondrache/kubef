@@ -8,10 +8,19 @@ use clap_complete::{
 use tracing::{error, level_filters::LevelFilter};
 use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
-use crate::env::{LOGO, PKG_NAME, PKG_RELEASE};
-
 mod forward;
 mod proxy;
+
+const LOGO: &str = r"
+  _          _           __ 
+ | | ___   _| |__   ___ / _|
+ | |/ / | | | '_ \ / _ \ |_ 
+ |   <| |_| | |_) |  __/  _|
+ |_|\_\\__,_|_.__/ \___|_|        
+";
+
+const PKG_NAME: &str = env!("CARGO_PKG_NAME");
+const PKG_RELEASE: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(Parser)]
 #[command(name = PKG_NAME, bin_name = "kubef")]
@@ -54,8 +63,8 @@ fn preprocess_args() -> Vec<String> {
     }
 }
 
-fn load_config_sync() -> Option<crate::cnf::schema::Config> {
-    let path = crate::cnf::config_path()?;
+fn load_config_sync() -> Option<crate::config::schema::Config> {
+    let path = crate::config::config_path()?;
     let file = std::fs::File::open(&path).ok()?;
     serde_yaml_ng::from_reader(file).ok()
 }

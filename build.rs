@@ -1,4 +1,4 @@
-include!("./src/cnf/schema.rs");
+include!("./src/config/schema.rs");
 
 use std::ffi::OsString;
 use std::fs::{self};
