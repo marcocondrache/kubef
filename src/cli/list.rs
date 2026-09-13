@@ -18,7 +18,7 @@ pub fn render(config: &Config, path: &std::path::Path) -> String {
     let mut out = format!("# {}\n", path.display());
 
     if config.groups.is_empty() {
-        out.push_str("No resources configured. Edit this file or run `kubef init --force`.\n");
+        out.push_str("No resources configured. Add groups to this file.\n");
         return out;
     }
 
@@ -113,7 +113,7 @@ mod tests {
     }
 
     #[test]
-    fn render_empty_points_at_init() {
+    fn render_empty_names_the_file() {
         let text = render(
             &Config {
                 context: None,
@@ -125,7 +125,7 @@ mod tests {
             Path::new("/tmp/config.yaml"),
         );
         assert!(text.contains("/tmp/config.yaml"));
-        assert!(text.contains("kubef init"));
+        assert!(text.contains("Add groups"));
     }
 
     #[test]

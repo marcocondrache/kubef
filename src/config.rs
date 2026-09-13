@@ -47,7 +47,7 @@ pub fn config_path() -> Result<PathBuf> {
 pub fn load_from_path(path: &Path) -> Result<schema::Config> {
     if !path.exists() {
         anyhow::bail!(
-            "config file not found at {}\nCreate one with `kubef init`, or set KUBEF_CONFIG to an existing file.",
+            "config file not found at {}\nCreate this file, or set KUBEF_CONFIG to an existing file.",
             path.display()
         );
     }
@@ -76,13 +76,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn missing_file_points_at_init() {
+    fn missing_file_names_the_path() {
         let err = load_from_path(Path::new("/tmp/kubef-no-such-config.yaml")).unwrap_err();
         let message = format!("{err}");
-        assert!(
-            message.contains("kubef init"),
-            "{message} should mention kubef init"
-        );
+        assert!(message.contains("/tmp/kubef-no-such-config.yaml"));
+        assert!(message.contains("KUBEF_CONFIG"));
     }
 
     #[test]

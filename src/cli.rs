@@ -9,7 +9,6 @@ use tracing::level_filters::LevelFilter;
 use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
 mod forward;
-mod init;
 mod list;
 mod proxy;
 
@@ -44,11 +43,9 @@ enum Commands {
     Proxy(proxy::ProxyCommandArguments),
     #[command(about = "List configured aliases and groups")]
     List,
-    #[command(about = "Write a starter config file")]
-    Init(init::InitCommandArguments),
 }
 
-const KNOWN_SUBCOMMANDS: &[&str] = &["forward", "proxy", "list", "init", "help"];
+const KNOWN_SUBCOMMANDS: &[&str] = &["forward", "proxy", "list", "help"];
 
 fn inject_forward_subcommand() -> Vec<String> {
     let args: Vec<String> = std::env::args().collect();
@@ -111,7 +108,6 @@ pub async fn init() -> ExitCode {
         Some(Commands::Forward(args)) => forward::init(args).await,
         Some(Commands::Proxy(args)) => proxy::init(args).await,
         Some(Commands::List) => list::init().await,
-        Some(Commands::Init(args)) => init::init(args),
         None => Err(anyhow::anyhow!("No target specified")),
     };
 

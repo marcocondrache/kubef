@@ -45,7 +45,7 @@ cp target/release/kubef /usr/local/bin/
 - `$KUBEF_CONFIG` (if set)
 - `~/.config/kubef/config.yaml` (XDG config directory)
 
-Create a starter file with `kubef init` (or `kubef init ./config.yaml` for a project-local file). `kubef list` prints the resolved path and every configured alias.
+`kubef list` prints the resolved path and every configured alias.
 
 ### Configuration Format
 
@@ -349,15 +349,13 @@ eval (E:COMPLETE=elvish kubef | slurp)
 $env:COMPLETE = "powershell"; kubef | Out-String | Invoke-Expression; Remove-Item Env:\COMPLETE
 ```
 
-## Inspect and bootstrap
+## Inspect
 
 ```bash
 kubef list
-kubef init
-kubef init ./config.yaml
 ```
 
-`kubef list` prints the config path, then each group and alias with selector, ports, and context. `kubef init` writes a starter file at the default path (or the path you pass) and refuses to overwrite unless you pass `--force`.
+`kubef list` prints the config path, then each group and alias with selector, ports, and context.
 
 ## Environment Variables
 
@@ -405,7 +403,7 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 ### Common Issues
 
 1. **"unknown target"** — run `kubef list` and compare aliases. Close names get a "Did you mean" hint.
-2. **"config file not found"** — run `kubef init`, or set `KUBEF_CONFIG` to an existing file
+2. **"config file not found"** — create the file at the printed path, or set `KUBEF_CONFIG` to an existing file
 3. **Connection refused** - Ensure the target pods are running and the remote port is correct
 4. **Permission denied** - Verify your kubectl configuration and cluster access
 
