@@ -23,9 +23,7 @@ impl LoopbackToken {
 
 impl Drop for LoopbackToken {
     fn drop(&mut self) {
-        if cfg!(target_os = "macos") {
-            tokio::spawn(SocketPool::drop_loopback(self.inner));
-        }
+        SocketPool::drop_loopback_alias(self.inner);
     }
 }
 
@@ -95,29 +93,19 @@ impl SocketPool {
             .ok_or(anyhow::anyhow!("Failed to ensure loopback"))
     }
 
-    #[cfg(target_os = "macos")]
-    async fn drop_loopback(address: IpAddr) -> Result<()> {
-        use tokio::process::Command;
-
-        let exit = Command::new("/sbin/ifconfig")
-            .args(["lo0", "-alias", &address.to_string()])
-            .status()
-            .await?;
-
-        exit.success()
-            .then_some(())
-            .ok_or(anyhow::anyhow!("Failed to drop loopback"))
+    fn drop_loopback_alias(address: IpAddr) {
+        #[cfg(target_os = "macos")]
+        {
+            let _ = std::process::Command::new("/sbin/ifconfig")
+                .args(["lo0", "-alias", &address.to_string()])
+                .status();
+        }
+        #[cfg(not(target_os = "macos"))]
+        let _ = address;
     }
 
     #[cfg(not(target_os = "macos"))]
     fn ensure_loopback(_address: IpAddr) -> impl Future<Output = Result<()>> {
-        use futures::future;
-
-        future::ready(Ok(()))
-    }
-
-    #[cfg(not(target_os = "macos"))]
-    fn drop_loopback(_address: IpAddr) -> impl Future<Output = Result<()>> {
         use futures::future;
 
         future::ready(Ok(()))

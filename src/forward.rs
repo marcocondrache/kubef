@@ -128,7 +128,11 @@ impl<'ctx> Forwarder<'ctx> {
         let (socket, ltoken) = self.sockets.get_loopback(resource.ports.local).await?;
         let future = self.bind(socket, resource, ltoken).await?;
 
-        self.tracker.spawn(future);
+        self.tracker.spawn(async move {
+            if let Err(e) = future.await {
+                warn!("Forwarder stopped: {e:#}");
+            }
+        });
 
         Ok(())
     }

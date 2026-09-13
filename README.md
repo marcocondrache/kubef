@@ -222,7 +222,7 @@ kubef web
 If the alias is not found, kubef suggests close matches and exits without prompting — re-run with the corrected name:
 
 ```
-error: unknown target "frotend"
+error: unknown target "frontends"
   Did you mean: frontend, frontend-v2?
 ```
 
