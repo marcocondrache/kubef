@@ -9,6 +9,13 @@
         "null"
       ]
     },
+    "contexts": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/ContextAlias"
+      },
+      "default": {}
+    },
     "groups": {
       "type": "object",
       "additionalProperties": {
@@ -23,6 +30,17 @@
         "string",
         "null"
       ]
+    },
+    "ports": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/GlobalPorts"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
     }
   },
   "additionalProperties": false,
@@ -30,6 +48,56 @@
     "groups"
   ],
   "$defs": {
+    "ContextAlias": {
+      "type": "object",
+      "properties": {
+        "kubeconfig": {
+          "type": "string"
+        },
+        "namespace": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "kubeconfig"
+      ]
+    },
+    "GlobalPorts": {
+      "type": "object",
+      "properties": {
+        "mapping": {
+          "$ref": "#/$defs/PortMapping"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "mapping"
+      ]
+    },
+    "PortMapping": {
+      "type": "string",
+      "enum": [
+        "container",
+        "service"
+      ]
+    },
+    "PortSpec": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "integer",
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0
+        }
+      ]
+    },
     "Ports": {
       "type": "object",
       "properties": {
@@ -42,11 +110,18 @@
           "maximum": 65535,
           "minimum": 0
         },
+        "mapping": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PortMapping"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "remote": {
-          "type": "integer",
-          "format": "uint16",
-          "maximum": 65535,
-          "minimum": 0
+          "$ref": "#/$defs/PortSpec"
         }
       },
       "additionalProperties": false,
@@ -67,7 +142,11 @@
           ]
         },
         "namespace": {
-          "type": "string"
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
         },
         "policy": {
           "anyOf": [
@@ -89,7 +168,6 @@
       "additionalProperties": false,
       "required": [
         "alias",
-        "namespace",
         "selector",
         "ports"
       ]

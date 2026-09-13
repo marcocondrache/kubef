@@ -5,17 +5,42 @@ use tokio::{sync::OnceCell, task};
 
 pub mod schema;
 
+/// Resolves the namespace for a resource using the following chain:
+/// 1. Explicit `resource.namespace`
+/// 2. Namespace from the context alias, if the resource's context names one
+/// 3. `"default"`
+#[must_use]
+pub fn resolve_namespace<'a>(
+    resource: &'a schema::Resource,
+    config: &'a schema::Config,
+) -> &'a str {
+    resource
+        .namespace
+        .as_deref()
+        .or_else(|| {
+            resource
+                .context
+                .as_deref()
+                .and_then(|ctx| config.contexts.get(ctx))
+                .and_then(|alias| alias.namespace.as_deref())
+        })
+        .unwrap_or("default")
+}
+
 static CNF: OnceCell<schema::Config> = OnceCell::const_new();
 
-pub async fn extract() -> Result<&'static schema::Config> {
-    let xdg = xdg::BaseDirectories::with_prefix("kubef");
+/// Resolves the config file path: `KUBEF_CONFIG` env var, or `config.yaml`
+/// under the platform config dir (`~/.config/kubef` on unix,
+/// `%APPDATA%\kubef` on windows).
+pub fn config_path() -> Option<std::path::PathBuf> {
+    if let Ok(val) = env::var("KUBEF_CONFIG") {
+        return Some(std::path::PathBuf::from(val));
+    }
+    dirs::config_dir().map(|d| d.join("kubef").join("config.yaml"))
+}
 
-    let path = match env::var("KUBEF_CONFIG") {
-        Ok(val) => std::path::PathBuf::from(val),
-        Err(_) => xdg
-            .place_config_file("config.yaml")
-            .expect("Failed to create default config file"),
-    };
+pub async fn extract() -> Result<&'static schema::Config> {
+    let path = config_path().expect("Failed to resolve default config file path");
 
     let config = CNF
         .get_or_try_init(|| async {

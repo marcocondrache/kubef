@@ -17,10 +17,10 @@ permissions:
 jobs:
   build:
     name: Build binary
-    if: ${{ github.ref == 'refs/heads/main' }} || ${{ github.event.label.name == 'nix' }}
+    if: ${{ github.ref == 'refs/heads/main' || github.event.label.name == 'nix' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-      - uses: cachix/install-nix-action@8887e596b4ee1134dae06b98d573bd674693f47c
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
       - run: nix build
       - run: ./result/bin/kubef help

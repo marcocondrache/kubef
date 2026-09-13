@@ -3,4 +3,22 @@ updates:
   - package-ecosystem: "cargo"
     directory: "/"
     schedule:
-      interval: "weekly"
+      interval: "cron"
+      cronjob: "42 1 * * 5" # friday @ 1:42
+    groups:
+      cargo-dependencies:
+        patterns:
+        - "*"
+    cooldown:
+      default-days: 7
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "cron"
+      cronjob: "12 13 * * 5" # friday @ 13:12
+    groups:
+      actions-dependencies:
+        patterns:
+        - "*"
+    cooldown:
+      default-days: 7

@@ -48,40 +48,70 @@ cp target/release/kubef /usr/local/bin/
 ### Configuration Format
 
 ```yaml
+# Optional: default kubeconfig context for all resources
+context: <kubeconfig-context-or-alias>
+
+# Optional: distinct loopback IPs per resource (macOS only — adds lo0 aliases)
+loopback: 127.0.0.0/8
+
+# Optional: short names for verbose kubeconfig context names
+contexts:
+  <alias>:
+    kubeconfig: <raw-kubeconfig-context-name>
+    namespace: <optional-default-namespace>
+
+# Optional: global default for remote port resolution (default: container)
+ports:
+  mapping: container | service
+
 groups:
   <group_name>:
     - alias: <resource_alias>
-      namespace: <namespace>  # optional, defaults to "default"
+      namespace: <namespace>        # optional; falls back to context alias namespace, then "default"
+      context: <alias-or-raw>       # optional; overrides config-level context
+      policy: roundrobin | sticky   # optional; default: roundrobin
       selector:
-        type: <selector_type>
+        type: label | deployment | service
         match: <selector_value>
       ports:
-        remote: <pod_port> # target port on the pod
-        local: <local_port>
+        remote: <port-name-or-number> # string = named port; number = container or service port
+        local: <local_port>           # optional; omit for OS-assigned
+        mapping: container | service  # optional; per-resource override of global default
 ```
 
 ### Selector types
 
-- **service** - Select pods via Kubernetes service selector
-- **deployment** - Select pods managed by a specific deployment
-- **label** - Select pods using label key-value pairs
+- **service** - Select pods via Kubernetes Service selector
+- **deployment** - Select pods managed by a specific Deployment
+- **label** - Select pods matching label key-value pairs
 
 ### Example configuration
 
 ```yaml
+context: prod-cluster
+loopback: 127.1.0.0/24
+
+contexts:
+  prod:
+    kubeconfig: arn:aws:eks:eu-west-1:123456789:cluster/prod
+    namespace: production
+  staging:
+    kubeconfig: arn:aws:eks:eu-west-1:123456789:cluster/staging
+    namespace: staging
+
 groups:
   web:
     - alias: frontend
-      namespace: production
+      context: prod
       selector:
         type: service
         match: frontend-service
       ports:
-        remote: 8080
+        remote: http    # named port resolved from the service spec
         local: 3000
 
     - alias: api
-      namespace: production
+      context: prod
       selector:
         type: deployment
         match: api-deployment
@@ -98,6 +128,76 @@ groups:
       ports:
         remote: 8080
         local: 9000
+```
+
+## Context Aliases
+
+Long kubeconfig context names (e.g. ARN strings for EKS clusters) can be aliased in the `contexts` map. Each alias carries two fields:
+
+- `kubeconfig` — the raw kubeconfig context name to use when connecting
+- `namespace` — optional default namespace for resources that use this alias
+
+```yaml
+contexts:
+  prod:
+    kubeconfig: arn:aws:eks:eu-west-1:123456789:cluster/prod
+    namespace: production
+  local:
+    kubeconfig: minikube
+```
+
+Resources then reference the alias in their `context` field:
+
+```yaml
+groups:
+  services:
+    - alias: api
+      context: prod     # expands to the full EKS ARN; namespace defaults to "production"
+      selector:
+        type: service
+        match: api
+      ports:
+        remote: 8080
+        local: 8080
+```
+
+Namespace resolution order for a resource using a context alias: explicit `namespace` on the resource → `namespace` from the context alias → `"default"`.
+
+The config-level `context` field and per-resource `context` field both accept either a raw kubeconfig context name or a context alias.
+
+## Named Ports and Port Mapping
+
+`ports.remote` accepts either a number or a string (named port):
+
+- **String** (e.g. `remote: http`) — kubef resolves the name against the service spec (for `selector.type: service`) or the full pod spec (for other selectors). An error is reported at startup if the named port is not found.
+- **Number** — interpreted according to `ports.mapping`:
+  - `mapping: container` (default) — the number is used directly as the container port in the pod-level port-forward
+  - `mapping: service` — the number is looked up in the Service's `spec.ports[].port` to find the corresponding `targetPort`
+
+`mapping` can be set globally under the top-level `ports` key, or overridden per resource:
+
+```yaml
+ports:
+  mapping: service   # global default: treat numeric remote ports as service ports
+
+groups:
+  backend:
+    - alias: auth
+      selector:
+        type: service
+        match: auth-svc
+      ports:
+        remote: 80          # service port 80 → resolved to container targetPort
+        local: 8080
+
+    - alias: metrics
+      selector:
+        type: service
+        match: metrics-svc
+      ports:
+        remote: 9090
+        mapping: container  # override: treat 9090 as a direct container port
+        local: 9090
 ```
 
 ## Usage
@@ -117,6 +217,13 @@ kubef forward --target pdf
 Forward to all resources in a group:
 ```bash
 kubef web
+```
+
+If the alias is not found, kubef suggests close matches and exits without prompting — re-run with the corrected name:
+
+```
+error: unknown target "frotend"
+  Did you mean: frontend, frontend-v2?
 ```
 
 ### How It Works
@@ -205,9 +312,42 @@ groups:
         local: 9090
 ```
 
+## Shell Completions
+
+`kubef` completes subcommand names, flags, and config-driven aliases and group names at tab-press time. Completions are driven by the binary itself — aliases are read from the active config file on every tab-press, so newly added aliases appear immediately.
+
+### Installation
+
+Add the appropriate line to your shell init file and reload.
+
+**Bash** (`~/.bashrc`):
+```bash
+source <(COMPLETE=bash kubef)
+```
+
+**Zsh** (`~/.zshrc`):
+```zsh
+source <(COMPLETE=zsh kubef)
+```
+
+**Fish** (`~/.config/fish/config.fish`):
+```fish
+COMPLETE=fish kubef | source
+```
+
+**Elvish** (`~/.elvish/rc.elv`):
+```elvish
+eval (E:COMPLETE=elvish kubef | slurp)
+```
+
+**PowerShell** (`$PROFILE`):
+```powershell
+$env:COMPLETE = "powershell"; kubef | Out-String | Invoke-Expression; Remove-Item Env:\COMPLETE
+```
+
 ## Environment Variables
 
-- `KUBEF_CONFIG_PATH` - Custom path to configuration file
+- `KUBEF_CONFIG` - Custom path to configuration file
 - `KUBEF_LOG` - Set logging level (e.g., `KUBEF_LOG=debug kubef webapp`)
 
 ## Development
@@ -249,7 +389,7 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ### Common Issues
 
-1. **"No resources found"** - Check that your configuration file exists and contains the specified alias or group
+1. **"No resources found"** - Check that your configuration file exists and contains the specified alias or group. If the name is close but not exact, kubef will suggest alternatives — check the error output for "Did you mean" hints
 2. **Connection refused** - Ensure the target pods are running and the remote port is correct
 3. **Permission denied** - Verify your kubectl configuration and cluster access
 

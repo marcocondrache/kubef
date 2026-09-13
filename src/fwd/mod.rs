@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::{
-    cnf::schema::Resource,
+    cnf::{self, schema::Resource},
     fwd::{
         clients::ClientPool,
         sockets::{LoopbackToken, SocketPool},
@@ -15,7 +15,7 @@ use k8s_openapi::api::core::v1::Pod;
 use kube::{Api, ResourceExt};
 use tokio::net::{TcpSocket, TcpStream};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
-use tracing::{Level, debug, info, instrument};
+use tracing::{Level, debug, info, instrument, warn};
 
 pub mod clients;
 pub mod proxy;
@@ -57,15 +57,32 @@ impl<'ctx> Forwarder<'ctx> {
         let policy = resource.policy.unwrap_or_default();
         let context = resource.context.as_deref().or(self.context);
 
-        let client = match context {
-            Some(context) => self.pool.get_or_insert(context).await?,
-            _ => self.pool.get_default().await?,
+        let config = cnf::extract().await?;
+
+        let (kubeconfig_context, alias_namespace) = match context {
+            Some(ctx) => match config.contexts.get(ctx) {
+                Some(alias) => (Some(alias.kubeconfig.as_str()), alias.namespace.as_deref()),
+                None => (Some(ctx), None),
+            },
+            None => (None, None),
         };
+
+        let client = match kubeconfig_context {
+            Some(ctx) => self.pool.get_or_insert(ctx).await?,
+            None => self.pool.get_default().await?,
+        };
+
+        let namespace = resource
+            .namespace
+            .as_deref()
+            .or(alias_namespace)
+            .unwrap_or("default");
 
         let server = socket.listen(1024)?;
 
-        let api = Api::<Pod>::namespaced(client.clone(), &resource.namespace);
-        let api_ptr = Arc::new(api.clone());
+        let api_ptr = Arc::new(Api::<Pod>::namespaced(client.clone(), namespace));
+        let meta_api =
+            Api::<kube::api::PartialObjectMeta<Pod>>::namespaced(client.clone(), namespace);
 
         info!(
             "Listening TCP on {} forwarded to {}",
@@ -73,10 +90,12 @@ impl<'ctx> Forwarder<'ctx> {
             resource.alias
         );
 
+        let pod_port = watcher::resolve_port(&client, resource, config).await?;
+
         // TODO: How do we capture the error?
         let future = async move {
-            let selector = watcher::select(&client, resource).await?;
-            let mut watcher = watcher::Watcher::new(api, &selector, policy).await?;
+            let selector = watcher::select(&client, resource, config).await?;
+            let mut watcher = watcher::Watcher::new(meta_api, &selector, policy).await?;
 
             loop {
                 tokio::select! {
@@ -90,7 +109,6 @@ impl<'ctx> Forwarder<'ctx> {
                         let Some(pod) = watcher.get() else { continue };
 
                         let pod_name = pod.name_any();
-                        let pod_port = resource.ports.remote;
 
                         info!(
                             "Forwarding connection from {} to {}",
@@ -149,7 +167,6 @@ impl Forwarder<'_> {
     ) -> Result<()> {
         // Optimization
         connection.set_nodelay(true)?;
-        connection.set_linger(None)?;
 
         debug!("Opening upstream connection to {}", pod_name.as_ref());
 
@@ -165,28 +182,32 @@ impl Forwarder<'_> {
 
         debug!("Upstream connection opened");
 
-        tokio::select! {
+        let cancelled = tokio::select! {
             biased;
-            () = token.cancelled() => {},
+            () = token.cancelled() => true,
             Some(e) = closer => {
                 forwarding.abort();
 
                 anyhow::bail!(e);
             }
-            Err(e) = tokio::io::copy_bidirectional(&mut connection, &mut upstream) => {
-                forwarding.abort();
+            result = tokio::io::copy_bidirectional(&mut connection, &mut upstream) => {
+                if let Err(e) = result {
+                    anyhow::bail!(e);
+                }
 
-                anyhow::bail!(e);
+                false
             }
         };
 
         debug!("Going to gracefully drop upstream connection");
 
         drop(upstream);
+        forwarding.abort();
 
-        forwarding
-            .join()
-            .await
-            .context("Failed to conclude forward")
+        if cancelled && let Err(e) = forwarding.join().await {
+            warn!("Forward concluded with error on shutdown: {e}");
+        }
+
+        Ok(())
     }
 }

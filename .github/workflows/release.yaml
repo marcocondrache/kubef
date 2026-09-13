@@ -13,7 +13,7 @@ permissions:
   contents: write
 
 env:
-  RUST_VERSION: 1.87.0
+  RUST_VERSION: 1.98.0
 
 jobs:
   build:
@@ -35,18 +35,24 @@ jobs:
           - target: aarch64-apple-darwin
             os: macos-latest
             archive: tar.gz
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            archive: zip
+          - target: i686-pc-windows-msvc
+            os: windows-latest
+            archive: zip
     steps:
       - name: Checkout sources
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install stable toolchain
-        uses: dtolnay/rust-toolchain@4305c38b25d97ef35a8ad1f985ccf2d2242004f2
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1
         with:
           toolchain: ${{ env.RUST_VERSION }}
           targets: ${{ matrix.target }}
 
       - name: Setup cache
-        uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           key: ${{ matrix.target }}
 
@@ -55,20 +61,31 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y gcc-aarch64-linux-gnu
+          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> "$GITHUB_ENV"
 
       - name: Build release binary
         run: cargo build --release --target ${{ matrix.target }}
-        env:
-          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
 
       - name: Package artifact
         run: |
           cd target/${{ matrix.target }}/release
-          tar czf ../../../kubef-${{ matrix.target }}.${{ matrix.archive }} kubef
-          cd ../../..
+          if [[ "${{ matrix.target }}" == *windows* ]]; then
+            7z a ../../../kubef-${{ matrix.target }}.${{ matrix.archive }} kubef.exe
+          else
+            tar czf ../../../kubef-${{ matrix.target }}.${{ matrix.archive }} kubef
+          fi
+
+      - name: Smoke test binary
+        if: matrix.target != 'aarch64-unknown-linux-gnu'
+        run: |
+          if [[ "${{ matrix.target }}" == *windows* ]]; then
+            ./target/${{ matrix.target }}/release/kubef.exe --version
+          else
+            ./target/${{ matrix.target }}/release/kubef --version
+          fi
 
       - name: Upload artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: kubef-${{ matrix.target }}
           path: kubef-${{ matrix.target }}.${{ matrix.archive }}
@@ -79,13 +96,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout sources
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Download artifacts
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           path: artifacts
           merge-multiple: true
+
+      - name: Generate checksums
+        run: |
+          cd artifacts
+          for f in kubef-*; do
+            sha256sum "$f" > "$f.sha256"
+          done
 
       - name: Create GitHub release
         run: |

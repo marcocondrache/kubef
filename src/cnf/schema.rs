@@ -4,6 +4,13 @@ use ipnet::IpNet;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+#[derive(Serialize, Deserialize, Clone, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ContextAlias {
+    pub kubeconfig: String,
+    pub namespace: Option<String>,
+}
+
 #[derive(Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
@@ -11,13 +18,39 @@ pub struct Config {
     pub groups: HashMap<String, Vec<Resource>>,
     #[schemars(with = "Option<String>")]
     pub loopback: Option<IpNet>,
+    #[serde(default)]
+    pub contexts: HashMap<String, ContextAlias>,
+    #[serde(default)]
+    pub ports: Option<GlobalPorts>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct GlobalPorts {
+    pub mapping: PortMapping,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Copy, Default, PartialEq, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum PortMapping {
+    #[default]
+    Container,
+    Service,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, JsonSchema)]
+#[serde(untagged)]
+pub enum PortSpec {
+    Named(String),
+    Number(u16),
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Resource {
     pub alias: String,
-    pub namespace: String,
+    #[serde(default)]
+    pub namespace: Option<String>,
     pub context: Option<String>,
     pub policy: Option<SelectorPolicy>,
     pub selector: ResourceSelector,
@@ -27,8 +60,9 @@ pub struct Resource {
 #[derive(Serialize, Deserialize, Clone, Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Ports {
-    pub remote: u16,
+    pub remote: PortSpec,
     pub local: Option<u16>,
+    pub mapping: Option<PortMapping>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Copy, Default, JsonSchema)]
