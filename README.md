@@ -372,9 +372,10 @@ cargo test
 ### Code Structure
 
 - `src/main.rs` - Application entry point
-- `src/cli/` - Command-line interface and argument parsing
-- `src/cnf/` - Configuration management and parsing
-- `src/fwd/` - Core port forwarding logic and pod watching
+- `src/cli.rs` / `src/cli/` - Command-line interface and argument parsing
+- `src/cnf.rs` / `src/cnf/` - Configuration management and parsing
+- `src/env.rs` - Package metadata and logo
+- `src/fwd.rs` / `src/fwd/` - Core port forwarding logic and pod watching
 - `src/fwd/watcher.rs` - Kubernetes pod watcher implementation
 
 ## License
