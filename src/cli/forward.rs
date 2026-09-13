@@ -71,14 +71,77 @@ fn get_target<'config>(
 
         if suggestions.is_empty() {
             Err(anyhow::anyhow!(
-                "No resources found for target '{target}' in aliases or groups"
+                "unknown target '{target}'\nRun `kubef list` to see configured aliases and groups."
             ))
         } else {
             let names: Vec<&str> = suggestions.iter().map(|(name, _)| *name).collect();
             Err(anyhow::anyhow!(
-                "No resources found for target '{target}' in aliases or groups\nDid you mean: {}?",
+                "unknown target '{target}'\nDid you mean: {}?",
                 names.join(", ")
             ))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::schema::{Config, PortSpec, Ports, Resource, ResourceSelector};
+    use std::collections::HashMap;
+
+    fn config_with(alias: &str, group: &str) -> Config {
+        let mut groups = HashMap::new();
+        groups.insert(
+            group.to_string(),
+            vec![Resource {
+                alias: alias.to_string(),
+                namespace: None,
+                context: None,
+                policy: None,
+                selector: ResourceSelector::Service("svc".into()),
+                ports: Ports {
+                    remote: PortSpec::Number(80),
+                    local: Some(8080),
+                    mapping: None,
+                },
+            }],
+        );
+        Config {
+            context: None,
+            groups,
+            loopback: None,
+            contexts: HashMap::new(),
+            ports: None,
+        }
+    }
+
+    #[test]
+    fn finds_alias() {
+        let config = config_with("frontend", "web");
+        let target = get_target(&config, "frontend").unwrap();
+        assert!(matches!(target, Either::Left(resource) if resource.alias == "frontend"));
+    }
+
+    #[test]
+    fn finds_group() {
+        let config = config_with("frontend", "web");
+        let target = get_target(&config, "web").unwrap();
+        assert!(matches!(target, Either::Right(resources) if resources.len() == 1));
+    }
+
+    #[test]
+    fn unknown_target_mentions_list() {
+        let config = config_with("frontend", "web");
+        let err = get_target(&config, "pdf").unwrap_err();
+        assert!(format!("{err}").contains("kubef list"));
+    }
+
+    #[test]
+    fn close_target_suggests() {
+        let config = config_with("frontend", "web");
+        let err = get_target(&config, "frontends").unwrap_err();
+        let message = format!("{err}");
+        assert!(message.contains("unknown target 'frontends'"));
+        assert!(message.contains("frontend"));
     }
 }

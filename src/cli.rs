@@ -5,10 +5,12 @@ use clap_complete::{
     CompleteEnv,
     engine::{ArgValueCompleter, CompletionCandidate},
 };
-use tracing::{error, level_filters::LevelFilter};
+use tracing::level_filters::LevelFilter;
 use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
 mod forward;
+mod init;
+mod list;
 mod proxy;
 
 const LOGO: &str = r"
@@ -40,9 +42,13 @@ enum Commands {
     Forward(forward::ForwardCommandArguments),
     #[command(about = "Proxy an internal ip address")]
     Proxy(proxy::ProxyCommandArguments),
+    #[command(about = "List configured aliases and groups")]
+    List,
+    #[command(about = "Write a starter config file")]
+    Init(init::InitCommandArguments),
 }
 
-const KNOWN_SUBCOMMANDS: &[&str] = &["forward", "proxy", "help"];
+const KNOWN_SUBCOMMANDS: &[&str] = &["forward", "proxy", "list", "init", "help"];
 
 fn inject_forward_subcommand() -> Vec<String> {
     let args: Vec<String> = std::env::args().collect();
@@ -59,9 +65,8 @@ fn inject_forward_subcommand() -> Vec<String> {
 }
 
 fn load_config_sync() -> Option<crate::config::schema::Config> {
-    let path = crate::config::config_path()?;
-    let file = std::fs::File::open(&path).ok()?;
-    serde_yaml_ng::from_reader(file).ok()
+    let path = crate::config::config_path().ok()?;
+    crate::config::load_from_path(&path).ok()
 }
 
 fn complete_targets(_current: &std::ffi::OsStr) -> Vec<CompletionCandidate> {
@@ -105,11 +110,13 @@ pub async fn init() -> ExitCode {
     let output = match command {
         Some(Commands::Forward(args)) => forward::init(args).await,
         Some(Commands::Proxy(args)) => proxy::init(args).await,
+        Some(Commands::List) => list::init().await,
+        Some(Commands::Init(args)) => init::init(args),
         None => Err(anyhow::anyhow!("No target specified")),
     };
 
     if let Err(e) = output {
-        error!("{}", e);
+        eprintln!("error: {e}");
         ExitCode::FAILURE
     } else {
         ExitCode::SUCCESS

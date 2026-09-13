@@ -45,6 +45,8 @@ cp target/release/kubef /usr/local/bin/
 - `$KUBEF_CONFIG` (if set)
 - `~/.config/kubef/config.yaml` (XDG config directory)
 
+Create a starter file with `kubef init` (or `kubef init ./config.yaml` for a project-local file). `kubef list` prints the resolved path and every configured alias.
+
 ### Configuration Format
 
 ```yaml
@@ -211,7 +213,7 @@ kubef pdf
 
 Forward to a resource using the `forward` subcommand:
 ```bash
-kubef forward --target pdf
+kubef forward pdf
 ```
 
 Forward to all resources in a group:
@@ -219,11 +221,13 @@ Forward to all resources in a group:
 kubef web
 ```
 
-If the alias is not found, kubef suggests close matches and exits without prompting — re-run with the corrected name:
+If the same alias appears in more than one group, `kubef <alias>` forwards the first match. Use the group name to forward every resource in that group.
+
+If the alias is not found, kubef suggests close matches and exits without prompting — re-run with the corrected name, or run `kubef list`:
 
 ```
-error: unknown target "frontends"
-  Did you mean: frontend, frontend-v2?
+error: unknown target 'frontends'
+Did you mean: frontend, frontend-v2?
 ```
 
 ### How It Works
@@ -292,8 +296,8 @@ groups:
 # Forward staging API
 kubef staging
 
-# Or target specific environment
-kubef api  # Will forward all 'api' aliases
+# Or a unique alias
+kubef api
 ```
 
 ### Label-based selection
@@ -345,6 +349,16 @@ eval (E:COMPLETE=elvish kubef | slurp)
 $env:COMPLETE = "powershell"; kubef | Out-String | Invoke-Expression; Remove-Item Env:\COMPLETE
 ```
 
+## Inspect and bootstrap
+
+```bash
+kubef list
+kubef init
+kubef init ./config.yaml
+```
+
+`kubef list` prints the config path, then each group and alias with selector, ports, and context. `kubef init` writes a starter file at the default path (or the path you pass) and refuses to overwrite unless you pass `--force`.
+
 ## Environment Variables
 
 - `KUBEF_CONFIG` - Custom path to configuration file
@@ -390,9 +404,10 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ### Common Issues
 
-1. **"No resources found"** - Check that your configuration file exists and contains the specified alias or group. If the name is close but not exact, kubef will suggest alternatives — check the error output for "Did you mean" hints
-2. **Connection refused** - Ensure the target pods are running and the remote port is correct
-3. **Permission denied** - Verify your kubectl configuration and cluster access
+1. **"unknown target"** — run `kubef list` and compare aliases. Close names get a "Did you mean" hint.
+2. **"config file not found"** — run `kubef init`, or set `KUBEF_CONFIG` to an existing file
+3. **Connection refused** - Ensure the target pods are running and the remote port is correct
+4. **Permission denied** - Verify your kubectl configuration and cluster access
 
 ### Debugging
 
