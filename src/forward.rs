@@ -1,11 +1,11 @@
+pub mod sockets;
+pub mod watcher;
+
 use std::sync::Arc;
 
 use crate::{
-    cnf::{self, schema::Resource},
-    fwd::{
-        clients::ClientPool,
-        sockets::{LoopbackToken, SocketPool},
-    },
+    clients::ClientPool,
+    config::{self, schema::Resource},
 };
 use anyhow::{Context, Result};
 use either::Either;
@@ -17,10 +17,7 @@ use tokio::net::{TcpSocket, TcpStream};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 use tracing::{Level, debug, info, instrument, warn};
 
-pub mod clients;
-pub mod proxy;
-pub mod sockets;
-pub mod watcher;
+use self::sockets::{LoopbackToken, SocketPool};
 
 pub type Target<'a> = Either<&'a Resource, &'a [Resource]>;
 
@@ -57,7 +54,7 @@ impl<'ctx> Forwarder<'ctx> {
         let policy = resource.policy.unwrap_or_default();
         let context = resource.context.as_deref().or(self.context);
 
-        let config = cnf::extract().await?;
+        let config = config::extract().await?;
 
         let (kubeconfig_context, alias_namespace) = match context {
             Some(ctx) => match config.contexts.get(ctx) {

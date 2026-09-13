@@ -29,7 +29,7 @@ use kube::{
 use tokio::task::JoinHandle;
 use tracing::debug;
 
-use crate::cnf::{
+use crate::config::{
     self,
     schema::{Config, PortMapping, PortSpec, Resource, ResourceSelector, SelectorPolicy},
 };
@@ -124,7 +124,7 @@ pub async fn resolve_port(client: &Client, resource: &Resource, config: &Config)
         .or_else(|| config.ports.as_ref().map(|gp| gp.mapping))
         .unwrap_or_default();
 
-    let namespace = cnf::resolve_namespace(resource, config);
+    let namespace = config::resolve_namespace(resource, config);
 
     let ResourceSelector::Service(svc_name) = &resource.selector else {
         // Non-service selectors have no Service to consult; a numeric remote is
@@ -220,7 +220,7 @@ async fn resolve_target_port(
 }
 
 pub async fn select(client: &Client, resource: &Resource, config: &Config) -> Result<Selector> {
-    let namespace = cnf::resolve_namespace(resource, config);
+    let namespace = config::resolve_namespace(resource, config);
     match &resource.selector {
         ResourceSelector::Label(labels) => Ok(Selector::from_iter(labels.clone())),
         ResourceSelector::Deployment(name) => {

@@ -4,8 +4,8 @@ use clap_complete::engine::ArgValueCompleter;
 use either::Either;
 
 use crate::{
-    cnf::{self},
-    fwd::{Forwarder, Target},
+    config,
+    forward::{Forwarder, Target},
 };
 
 #[derive(Args)]
@@ -21,7 +21,7 @@ pub struct ForwardCommandArguments {
 pub async fn init(
     ForwardCommandArguments { target, context }: ForwardCommandArguments,
 ) -> Result<()> {
-    let config = cnf::extract().await?;
+    let config = config::extract().await?;
 
     let resources = get_target(config, &target)?;
     let context = context.as_deref().or(config.context.as_deref());
@@ -41,7 +41,10 @@ pub async fn init(
     Ok(())
 }
 
-fn get_target<'cnf>(config: &'cnf cnf::schema::Config, target: &str) -> Result<Target<'cnf>> {
+fn get_target<'config>(
+    config: &'config config::schema::Config,
+    target: &str,
+) -> Result<Target<'config>> {
     if let Some(resource) = config
         .groups
         .values()

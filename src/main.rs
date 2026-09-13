@@ -3,9 +3,10 @@
 use std::process::ExitCode;
 
 mod cli;
-mod cnf;
-mod env;
-mod fwd;
+mod clients;
+mod config;
+mod forward;
+mod proxy;
 
 #[tokio::main]
 async fn main() -> ExitCode {
