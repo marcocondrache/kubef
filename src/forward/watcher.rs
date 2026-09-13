@@ -115,10 +115,8 @@ impl Drop for Watcher {
     }
 }
 
-/// Resolve the concrete container port number for `resource`, consulting the Kubernetes API when
-/// needed (named ports or service mapping).
 pub async fn resolve_port(client: &Client, resource: &Resource, config: &Config) -> Result<u16> {
-    let effective_mapping = resource
+    let mapping = resource
         .ports
         .mapping
         .or_else(|| config.ports.as_ref().map(|gp| gp.mapping))
@@ -126,15 +124,31 @@ pub async fn resolve_port(client: &Client, resource: &Resource, config: &Config)
 
     let namespace = config::resolve_namespace(resource, config);
 
-    let ResourceSelector::Service(svc_name) = &resource.selector else {
-        // Non-service selectors have no Service to consult; a numeric remote is
-        // the container port, a named remote is unsupported.
-        return match &resource.ports.remote {
-            PortSpec::Number(n) => Ok(*n),
-            PortSpec::Named(_) => anyhow::bail!("named port resolution requires service selector"),
-        };
-    };
+    match &resource.selector {
+        ResourceSelector::Service(svc_name) => {
+            container_port_via_service(client, svc_name, namespace, &resource.ports.remote, mapping)
+                .await
+        }
+        ResourceSelector::Label(_) | ResourceSelector::Deployment(_) => {
+            container_port_without_service(&resource.ports.remote)
+        }
+    }
+}
 
+fn container_port_without_service(remote: &PortSpec) -> Result<u16> {
+    match remote {
+        PortSpec::Number(n) => Ok(*n),
+        PortSpec::Named(_) => anyhow::bail!("named port resolution requires service selector"),
+    }
+}
+
+async fn container_port_via_service(
+    client: &Client,
+    svc_name: &str,
+    namespace: &str,
+    remote: &PortSpec,
+    mapping: PortMapping,
+) -> Result<u16> {
     let service = client
         .get::<Service>(svc_name, &Namespace::from(namespace))
         .await?;
@@ -144,79 +158,71 @@ pub async fn resolve_port(client: &Client, resource: &Resource, config: &Config)
         anyhow::bail!("Service has no ports");
     };
 
-    match &resource.ports.remote {
-        PortSpec::Number(n) => {
-            let port = ports.iter().find(|p| p.port == i32::from(*n));
-
-            match (effective_mapping, port) {
-                // The number matches a service port: follow its targetPort to the
-                // container port. (Under `container` mapping the number may be the
-                // service port as printed by `kubectl get svc` rather than the
-                // container port; resolving through the service is correct in
-                // both mappings.)
-                (_, Some(port)) => resolve_target_port(port, &service, client, namespace).await,
-                // No service port matches: service mapping requires one, container
-                // mapping falls back to treating the number as the container port.
-                (PortMapping::Service, None) => anyhow::bail!("Service port {n} not found"),
-                (PortMapping::Container, None) => Ok(*n),
-            }
-        }
+    match remote {
+        PortSpec::Number(n) => match (mapping, ports.iter().find(|p| p.port == i32::from(*n))) {
+            (_, Some(port)) => follow_service_target_port(port, &service, client, namespace).await,
+            (PortMapping::Service, None) => anyhow::bail!("Service port {n} not found"),
+            (PortMapping::Container, None) => Ok(*n),
+        },
         PortSpec::Named(name) => {
             let port = ports
                 .iter()
                 .find(|p| p.name.as_deref() == Some(name.as_str()))
                 .context("Named service port not found")?;
 
-            resolve_target_port(port, &service, client, namespace).await
+            follow_service_target_port(port, &service, client, namespace).await
         }
     }
 }
 
-/// Resolve a `ServicePort` to the concrete container port: an unset targetPort
-/// maps to the service port itself (k8s identity default), a numeric targetPort
-/// is used directly, and a named targetPort is looked up in the container ports
-/// of a pod matching the service selector.
-async fn resolve_target_port(
+async fn follow_service_target_port(
     port: &ServicePort,
     service: &Service,
     client: &Client,
     namespace: &str,
 ) -> Result<u16> {
-    let Some(target) = port.target_port.as_ref() else {
-        return u16::try_from(port.port).context("Service port out of u16 range");
-    };
-
-    match target {
-        IntOrString::Int(n) => Ok(u16::try_from(*n).context("targetPort out of u16 range")?),
-        IntOrString::String(name) => {
-            let labels = service
-                .spec
-                .as_ref()
-                .and_then(|spec| spec.selector.as_ref())
-                .context("Service has no selector; cannot resolve named targetPort")?;
-
-            let pods = client
-                .list::<Pod>(
-                    &ListParams::default().labels_from(&Selector::from_iter(labels.clone())),
-                    &Namespace::from(namespace),
-                )
-                .await?;
-
-            let container_port = pods
-                .items
-                .iter()
-                .filter_map(|pod| pod.spec.as_ref())
-                .flat_map(|spec| spec.containers.iter())
-                .flat_map(|container| container.ports.iter().flatten())
-                .find(|p| p.name.as_deref() == Some(name))
-                .with_context(|| {
-                    format!("Named targetPort {name:?} not found in pod container ports")
-                })?;
-
-            Ok(u16::try_from(container_port.container_port)
-                .context("containerPort out of u16 range")?)
+    match port.target_port.as_ref() {
+        None => k8s_identity_container_port(port.port),
+        Some(IntOrString::Int(n)) => u16::try_from(*n).context("targetPort out of u16 range"),
+        Some(IntOrString::String(name)) => {
+            named_pod_container_port(client, service, namespace, name).await
         }
     }
+}
+
+fn k8s_identity_container_port(service_port: i32) -> Result<u16> {
+    u16::try_from(service_port).context("Service port out of u16 range")
+}
+
+async fn named_pod_container_port(
+    client: &Client,
+    service: &Service,
+    namespace: &str,
+    name: &str,
+) -> Result<u16> {
+    let labels = service
+        .spec
+        .as_ref()
+        .and_then(|spec| spec.selector.as_ref())
+        .context("Service has no selector; cannot resolve named targetPort")?;
+
+    let pods = client
+        .list::<Pod>(
+            &ListParams::default().labels_from(&Selector::from_iter(labels.clone())),
+            &Namespace::from(namespace),
+        )
+        .await?;
+
+    let container_port = pods
+        .items
+        .iter()
+        .filter_map(|pod| pod.spec.as_ref())
+        .flat_map(|spec| spec.containers.iter())
+        .flat_map(|container| container.ports.iter().flatten())
+        .find(|p| p.name.as_deref() == Some(name))
+        .with_context(|| format!("Named targetPort {name:?} not found in pod container ports"))?;
+
+    u16::try_from(container_port.container_port).context("containerPort out of u16 range")
 }
 
 pub async fn select(client: &Client, resource: &Resource, config: &Config) -> Result<Selector> {
@@ -247,7 +253,6 @@ pub async fn select(client: &Client, resource: &Resource, config: &Config) -> Re
                 .selector
                 .context("Service has no selector")?;
 
-            // TODO: it's a hack, kube-rs does something horrible behind the scenes
             Ok(Selector::from_iter(selector))
         }
     }

@@ -27,11 +27,8 @@ const PKG_RELEASE: &str = env!("CARGO_PKG_VERSION");
 #[command(version = PKG_RELEASE, before_help = LOGO)]
 #[command(disable_version_flag = false, arg_required_else_help = true)]
 struct Cli {
-    // Phantom positional: gives the completion engine a hook to suggest resource
-    // aliases at the top level alongside subcommands. Never populated at runtime
-    // because preprocess_args() always injects the "forward" subcommand first.
     #[arg(value_name = "RESOURCE", hide = true, add = ArgValueCompleter::new(complete_targets))]
-    target: Option<String>,
+    alias_completion_hook: Option<String>,
 
     #[command(subcommand)]
     command: Option<Commands>,
@@ -47,9 +44,7 @@ enum Commands {
 
 const KNOWN_SUBCOMMANDS: &[&str] = &["forward", "proxy", "help"];
 
-/// Injects `forward` before the target when the first arg is a resource alias rather than
-/// a subcommand or flag, preserving `kubef <target>` as a shorthand for `kubef forward <target>`.
-fn preprocess_args() -> Vec<String> {
+fn inject_forward_subcommand() -> Vec<String> {
     let args: Vec<String> = std::env::args().collect();
     match args.get(1) {
         Some(first) if !first.starts_with('-') && !KNOWN_SUBCOMMANDS.contains(&first.as_str()) => {
@@ -102,22 +97,15 @@ pub async fn init() -> ExitCode {
         .with(env)
         .init();
 
-    let args = Cli::parse_from(preprocess_args());
+    let Cli {
+        command,
+        alias_completion_hook: _,
+    } = Cli::parse_from(inject_forward_subcommand());
 
-    let output = match args.command {
+    let output = match command {
         Some(Commands::Forward(args)) => forward::init(args).await,
         Some(Commands::Proxy(args)) => proxy::init(args).await,
-        None => {
-            if let Some(target) = args.target {
-                forward::init(forward::ForwardCommandArguments {
-                    target,
-                    context: None,
-                })
-                .await
-            } else {
-                Err(anyhow::anyhow!("No target specified"))
-            }
-        }
+        None => Err(anyhow::anyhow!("No target specified")),
     };
 
     if let Err(e) = output {

@@ -109,7 +109,6 @@ impl Proxy {
         let source = format!("TCP-LISTEN:{},reuseaddr,fork", Self::PORT);
         let destination = destination.to_socat_target();
 
-        // TODO: Can we improve this?
         let pod = Pod {
             metadata: ObjectMeta {
                 name: Some(self.get_name()),

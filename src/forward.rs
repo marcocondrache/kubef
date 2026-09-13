@@ -89,7 +89,6 @@ impl<'ctx> Forwarder<'ctx> {
 
         let pod_port = watcher::resolve_port(&client, resource, config).await?;
 
-        // TODO: How do we capture the error?
         let future = async move {
             let selector = watcher::select(&client, resource, config).await?;
             let mut watcher = watcher::Watcher::new(meta_api, &selector, policy).await?;
@@ -98,7 +97,6 @@ impl<'ctx> Forwarder<'ctx> {
                 tokio::select! {
                     biased;
                     () = token.cancelled() => break,
-                    // Wait for next pod before accepting new connections
                     _ = watcher.next(), if watcher.is_empty() => {},
                     Ok((connection, addr)) = server.accept() => {
                         let api = api_ptr.clone();
@@ -130,7 +128,11 @@ impl<'ctx> Forwarder<'ctx> {
         let (socket, ltoken) = self.sockets.get_loopback(resource.ports.local).await?;
         let future = self.bind(socket, resource, ltoken).await?;
 
-        self.tracker.spawn(future);
+        self.tracker.spawn(async move {
+            if let Err(e) = future.await {
+                warn!("Forwarder stopped: {e:#}");
+            }
+        });
 
         Ok(())
     }
@@ -162,7 +164,6 @@ impl Forwarder<'_> {
         mut connection: TcpStream,
         token: CancellationToken,
     ) -> Result<()> {
-        // Optimization
         connection.set_nodelay(true)?;
 
         debug!("Opening upstream connection to {}", pod_name.as_ref());
