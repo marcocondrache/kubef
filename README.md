@@ -354,8 +354,16 @@ $env:COMPLETE = "powershell"; kubef | Out-String | Invoke-Expression; Remove-Ite
 
 ### Prerequisites
 
-- Rust 2024 edition
+- [mise](https://mise.jdx.dev/) for the Rust toolchain and cargo tools
 - Kubernetes cluster for testing
+
+Install the tools declared in `mise.toml`:
+
+```bash
+mise install
+```
+
+This provides Rust 1.98, `cargo-make`, `cargo-edit`, and `cargo-flamegraph`. Activate mise in your shell so they are on `PATH` (see the [mise getting started guide](https://mise.jdx.dev/getting-started.html)). Personal environment variables such as `KUBECONFIG` or `KUBEF_CONFIG` belong in a gitignored `mise.local.toml`.
 
 ### Building
 
