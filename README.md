@@ -363,7 +363,7 @@ Install the tools declared in `mise.toml`:
 mise install
 ```
 
-This provides Rust 1.98, `cargo-make`, `cargo-edit`, and `cargo-flamegraph`. Activate mise in your shell so they are on `PATH` (see the [mise getting started guide](https://mise.jdx.dev/getting-started.html)). Personal environment variables such as `KUBECONFIG` or `KUBEF_CONFIG` belong in a gitignored `mise.local.toml`.
+This provides Rust 1.98, `cargo-make`, `cargo-edit`, and `flamegraph` (`cargo flamegraph`). Activate mise in your shell so they are on `PATH` (see the [mise getting started guide](https://mise.jdx.dev/getting-started.html)). Personal environment variables such as `KUBECONFIG` or `KUBEF_CONFIG` belong in a gitignored `mise.local.toml`.
 
 ### Building
 
