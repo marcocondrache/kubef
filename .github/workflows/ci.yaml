@@ -1,134 +1,134 @@
-name: Continuous integration
-
-run-name: "CI run '${{ github.head_ref || github.ref_name }}'"
-
+name: ci
 on:
-  workflow_dispatch:
+  pull_request:
   push:
     branches:
       - main
-  pull_request:
-    types:
-      - opened
-      - synchronize
-      - reopened
-
-  merge_group:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.run_id || github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref_name }}-${{ github.ref_name == 'main' && github.sha || 'anysha' }}
   cancel-in-progress: true
-
-defaults:
-  run:
-    shell: bash
 
 permissions:
   contents: read
 
-env:
-  RUST_VERSION: 1.98.0
+defaults:
+  run:
+    shell: bash -euxo pipefail {0}
 
 jobs:
-  build:
-    name: Build binary
+  style:
+    name: style
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - name: Install stable toolchain
-        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
         with:
-          toolchain: ${{ env.RUST_VERSION }}
-
-      - name: Checkout sources
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Setup cache
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-        with:
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-
-      - name: Build binary
-        run: cargo build
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: kubef
-          path: target/debug/kubef
-
-  format:
-    name: Check format
-    runs-on: ubuntu-latest
-    steps:
-      - name: Install stable toolchain
-        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1
-        with:
-          toolchain: ${{ env.RUST_VERSION }}
+          toolchain: stable
           components: rustfmt
-
-      - name: Checkout sources
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Setup cache
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-        with:
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-
-      - name: Install cargo-make
-        run: cargo install --debug --locked cargo-make
-
-      - name: Check format
-        run: cargo make ci-format
+      - name: Check formatting
+        run: cargo fmt --all --check
+      - name: Check for typos
+        uses: crate-ci/typos@6edd83eb2e896de329eba6b6aef70bd227b982c2 # master
 
   clippy:
-    name: Check clippy
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
-      - name: Install stable toolchain
-        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
         with:
-          toolchain: ${{ env.RUST_VERSION }}
+          toolchain: stable
           components: clippy
-
-      - name: Checkout sources
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Setup cache
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-        with:
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-
-      - name: Install cargo-make
-        run: cargo install --debug --locked cargo-make
-
+      - name: Cache cargo registry and build
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
       - name: Run clippy
-        run: cargo make ci-clippy
+        run: cargo clippy --all -- -D warnings
 
-      - name: Run clippy release
-        run: cargo make ci-clippy-release
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
+        with:
+          toolchain: stable
+      - name: Cache cargo registry and build
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - name: Install nextest
+        uses: taiki-e/install-action@4dc1969decfa71b34f25aa7f3dd4656654d9ad1e # nextest
+      - name: Build
+        run: cargo build --verbose
+      - name: Run tests
+        run: cargo nextest run --verbose --no-tests=pass
 
-  check:
-    name: Check workspace
+  docs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
+        with:
+          toolchain: stable
+      - name: Cache cargo registry and build
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - name: Check documentation
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo doc --no-deps --document-private-items
+
+  machete:
+    name: machete
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
+        with:
+          toolchain: stable
+      - name: Install cargo-machete
+        uses: taiki-e/install-action@9b6b559d826485c6d295526fa532f31561f80197 # cargo-machete
+      - name: Check unused dependencies
+        run: cargo machete
+
+  tests_pass:
+    name: tests pass
+    needs: [style, clippy, test, docs, machete]
+    if: always()
     runs-on: ubuntu-latest
     steps:
-      - name: Install stable toolchain
-        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1
-        with:
-          toolchain: ${{ env.RUST_VERSION }}
+      - name: Check job results
+        run: |
+          set +x
+          EXIT_CODE=0
 
-      - name: Checkout sources
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+          check_result() {
+            echo "* $1: $2"
+            if [[ "$2" != "skipped" && "$2" != "success" ]]; then EXIT_CODE=1; fi
+          }
 
-      - name: Setup cache
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-        with:
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          check_result "style" "$RESULT_STYLE"
+          check_result "clippy" "$RESULT_CLIPPY"
+          check_result "test" "$RESULT_TEST"
+          check_result "docs" "$RESULT_DOCS"
+          check_result "machete" "$RESULT_MACHETE"
 
-      - name: Install cargo-make
-        run: cargo install --debug --locked cargo-make
-
-      - name: Check workspace
-        run: cargo make ci-check
-
-      - name: Check workspace release
-        run: cargo make ci-check-release
+          exit $EXIT_CODE
+        env:
+          RESULT_STYLE: ${{ needs.style.result }}
+          RESULT_CLIPPY: ${{ needs.clippy.result }}
+          RESULT_TEST: ${{ needs.test.result }}
+          RESULT_DOCS: ${{ needs.docs.result }}
+          RESULT_MACHETE: ${{ needs.machete.result }}
