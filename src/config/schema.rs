@@ -11,10 +11,11 @@ pub struct ContextAlias {
     pub namespace: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, JsonSchema)]
+#[derive(Serialize, Deserialize, Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
     pub context: Option<String>,
+    #[serde(default)]
     pub groups: HashMap<String, Vec<Resource>>,
     #[schemars(with = "Option<String>")]
     pub loopback: Option<IpNet>,

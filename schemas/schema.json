@@ -23,7 +23,8 @@
         "items": {
           "$ref": "#/$defs/Resource"
         }
-      }
+      },
+      "default": {}
     },
     "loopback": {
       "type": [
@@ -44,9 +45,6 @@
     }
   },
   "additionalProperties": false,
-  "required": [
-    "groups"
-  ],
   "$defs": {
     "ContextAlias": {
       "type": "object",
