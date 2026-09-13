@@ -1,24 +1,79 @@
-name: Release
-
+name: release
 on:
-  push:
-    tags:
-      - "v*"
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+    branches: [main]
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
 
 defaults:
   run:
-    shell: bash
-
-permissions:
-  contents: write
-
-env:
-  RUST_VERSION: 1.98.0
+    shell: bash -euxo pipefail {0}
 
 jobs:
+  semantic-release:
+    name: semantic-release
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    outputs:
+      new_release_published: ${{ steps.release.outputs.new_release_published }}
+      new_release_version: ${{ steps.release.outputs.new_release_version }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: true
+          ref: ${{ github.event.workflow_run.head_sha }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Setup bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      - name: Bootstrap or release
+        id: release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git checkout -B main
+
+          if [[ -z "$(git tag -l 'v*')" ]]; then
+            gh release create v0.1.0 \
+              --target "${{ github.event.workflow_run.head_sha }}" \
+              --title "v0.1.0" \
+              --notes "Initial release."
+            echo "new_release_published=true" >> "$GITHUB_OUTPUT"
+            echo "new_release_version=0.1.0" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          PREFIX="${RUNNER_TEMP}/semantic-release"
+          mkdir -p "$PREFIX"
+          bun add --cwd "$PREFIX" \
+            semantic-release@25.0.9 \
+            @semantic-release/exec@7.1.0 \
+            @semantic-release/github@12.0.9 \
+            conventional-changelog-conventionalcommits@9.3.1 # writer@8 until semantic-release ships writer@9
+          export NODE_PATH="$PREFIX/node_modules${NODE_PATH:+:$NODE_PATH}"
+          bun "$PREFIX/node_modules/semantic-release/bin/semantic-release.js"
+
   build:
-    name: Build (${{ matrix.target }})
+    name: build (${{ matrix.target }})
+    needs: semantic-release
+    if: needs.semantic-release.outputs.new_release_published == 'true'
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -42,30 +97,26 @@ jobs:
             os: windows-latest
             archive: zip
     steps:
-      - name: Checkout sources
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Install stable toolchain
-        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          toolchain: ${{ env.RUST_VERSION }}
+          ref: v${{ needs.semantic-release.outputs.new_release_version }}
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
+        with:
           targets: ${{ matrix.target }}
-
       - name: Setup cache
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           key: ${{ matrix.target }}
-
       - name: Install cross-compilation tools
         if: matrix.target == 'aarch64-unknown-linux-gnu'
         run: |
           sudo apt-get update
           sudo apt-get install -y gcc-aarch64-linux-gnu
           echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> "$GITHUB_ENV"
-
       - name: Build release binary
         run: cargo build --release --target ${{ matrix.target }}
-
       - name: Package artifact
         run: |
           cd target/${{ matrix.target }}/release
@@ -74,7 +125,6 @@ jobs:
           else
             tar czf ../../../kubef-${{ matrix.target }}.${{ matrix.archive }} kubef
           fi
-
       - name: Smoke test binary
         if: matrix.target != 'aarch64-unknown-linux-gnu'
         run: |
@@ -83,39 +133,35 @@ jobs:
           else
             ./target/${{ matrix.target }}/release/kubef --version
           fi
-
       - name: Upload artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: kubef-${{ matrix.target }}
           path: kubef-${{ matrix.target }}.${{ matrix.archive }}
 
-  release:
-    name: Create release
-    needs: build
+  publish:
+    name: publish
+    needs: [semantic-release, build]
+    if: needs.semantic-release.outputs.new_release_published == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
     steps:
-      - name: Checkout sources
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
       - name: Download artifacts
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           path: artifacts
           merge-multiple: true
-
       - name: Generate checksums
         run: |
           cd artifacts
           for f in kubef-*; do
             sha256sum "$f" > "$f.sha256"
           done
-
-      - name: Create GitHub release
-        run: |
-          gh release create ${{ github.ref_name }} \
-            --title "${{ github.ref_name }}" \
-            --generate-notes \
-            artifacts/*
+      - name: Upload release assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "v${{ needs.semantic-release.outputs.new_release_version }}" \
+            artifacts/*

@@ -1,0 +1,27 @@
+{
+  "branches": ["main"],
+  "tagFormat": "v${version}",
+  "plugins": [
+    [
+      "@semantic-release/commit-analyzer",
+      {
+        "preset": "conventionalcommits",
+        "presetConfig": {}
+      }
+    ],
+    [
+      "@semantic-release/release-notes-generator",
+      {
+        "preset": "conventionalcommits",
+        "presetConfig": {}
+      }
+    ],
+    [
+      "@semantic-release/exec",
+      {
+        "successCmd": "printf '%s\\n' 'new_release_published=true' 'new_release_version=${nextRelease.version}' >> \"$GITHUB_OUTPUT\""
+      }
+    ],
+    "@semantic-release/github"
+  ]
+}
