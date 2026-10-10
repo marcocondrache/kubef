@@ -54,7 +54,7 @@ pub fn load_from_path(path: &Path) -> Result<schema::Config> {
 
     let file = std::fs::File::open(path)
         .with_context(|| format!("cannot open config file {}", path.display()))?;
-    serde_yaml_ng::from_reader(file)
+    serde_saphyr::from_reader(file)
         .with_context(|| format!("invalid config file {}", path.display()))
 }
 
@@ -95,5 +95,9 @@ mod tests {
         let config = load_from_path(&path).unwrap();
         std::fs::remove_file(&path).unwrap();
         assert_eq!(config.groups["web"][0].alias, "frontend");
+        assert!(matches!(
+            config.groups["web"][0].ports.remote,
+            schema::PortSpec::Number(80)
+        ));
     }
 }
