@@ -1,6 +1,8 @@
 use std::{
     collections::BTreeMap,
+    fmt,
     net::SocketAddr,
+    str::FromStr,
     sync::atomic::{AtomicBool, Ordering},
 };
 
@@ -18,9 +20,68 @@ static ALPHABET: [char; 16] = [
     '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', 'a', 'b', 'c', 'd', 'e', 'f',
 ];
 
+/// A remote endpoint, either an IP socket address or a `host:port` pair.
+/// Hostnames are resolved inside the cluster, so cluster DNS names work.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ProxyTarget {
+    Socket(SocketAddr),
+    Host(String, u16),
+}
+
+impl ProxyTarget {
+    fn is_valid_hostname(host: &str) -> bool {
+        let host = host.strip_suffix('.').unwrap_or(host);
+
+        !host.is_empty()
+            && host.len() <= 253
+            && host.split('.').all(|label| {
+                !label.is_empty()
+                    && label.len() <= 63
+                    && !label.starts_with('-')
+                    && !label.ends_with('-')
+                    && label
+                        .chars()
+                        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+            })
+    }
+}
+
+impl FromStr for ProxyTarget {
+    type Err = anyhow::Error;
+
+    fn from_str(value: &str) -> Result<Self> {
+        if let Ok(socket) = value.parse::<SocketAddr>() {
+            return Ok(Self::Socket(socket));
+        }
+
+        let (host, port) = value
+            .rsplit_once(':')
+            .ok_or_else(|| anyhow::anyhow!("expected <host>:<port>, got '{value}'"))?;
+
+        let port = port
+            .parse::<u16>()
+            .map_err(|_| anyhow::anyhow!("invalid port '{port}'"))?;
+
+        if !Self::is_valid_hostname(host) {
+            return Err(anyhow::anyhow!("invalid host '{host}'"));
+        }
+
+        Ok(Self::Host(host.to_string(), port))
+    }
+}
+
+impl fmt::Display for ProxyTarget {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Socket(socket) => write!(f, "{socket}"),
+            Self::Host(host, port) => write!(f, "{host}:{port}"),
+        }
+    }
+}
+
 pub enum ProxyDestination {
-    Tcp(SocketAddr),
-    Udp(SocketAddr),
+    Tcp(ProxyTarget),
+    Udp(ProxyTarget),
 }
 
 impl ProxyDestination {
@@ -147,5 +208,62 @@ impl Drop for Proxy {
         let name = self.get_name();
 
         tokio::spawn(async move { api.delete(&name, &DeleteParams::default()).await });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_ipv4() {
+        let target: ProxyTarget = "10.0.0.1:5432".parse().unwrap();
+        assert_eq!(
+            target,
+            ProxyTarget::Socket("10.0.0.1:5432".parse().unwrap())
+        );
+    }
+
+    #[test]
+    fn parses_ipv6() {
+        let target: ProxyTarget = "[::1]:80".parse().unwrap();
+        assert_eq!(target.to_string(), "[::1]:80");
+    }
+
+    #[test]
+    fn parses_domain() {
+        let target: ProxyTarget = "db.default.svc.cluster.local:5432".parse().unwrap();
+        assert_eq!(
+            target,
+            ProxyTarget::Host("db.default.svc.cluster.local".into(), 5432)
+        );
+    }
+
+    #[test]
+    fn parses_single_label_host() {
+        let target: ProxyTarget = "redis:6379".parse().unwrap();
+        assert_eq!(target, ProxyTarget::Host("redis".into(), 6379));
+    }
+
+    #[test]
+    fn rejects_missing_port() {
+        assert!("example.com".parse::<ProxyTarget>().is_err());
+        assert!("example.com:".parse::<ProxyTarget>().is_err());
+        assert!("example.com:99999".parse::<ProxyTarget>().is_err());
+    }
+
+    #[test]
+    fn rejects_invalid_host() {
+        assert!(":80".parse::<ProxyTarget>().is_err());
+        assert!("-bad.com:80".parse::<ProxyTarget>().is_err());
+        assert!("a..b:80".parse::<ProxyTarget>().is_err());
+        assert!("host,fork:80".parse::<ProxyTarget>().is_err());
+        assert!("::1:80".parse::<ProxyTarget>().is_err());
+    }
+
+    #[test]
+    fn socat_target_uses_host() {
+        let destination = ProxyDestination::Tcp("api.example.com:443".parse().unwrap());
+        assert_eq!(destination.to_socat_target(), "TCP:api.example.com:443");
     }
 }

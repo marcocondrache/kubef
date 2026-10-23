@@ -3,7 +3,7 @@ use std::{net::SocketAddr, sync::Arc};
 use crate::{
     clients::ClientPool,
     forward::Forwarder,
-    proxy::{Proxy, ProxyDestination},
+    proxy::{Proxy, ProxyDestination, ProxyTarget},
 };
 use anyhow::Result;
 use clap::{Args, ValueEnum};
@@ -26,8 +26,12 @@ pub struct ProxyCommandArguments {
     #[arg(short, long, help = "Local address to listen on")]
     pub bind: SocketAddr,
 
-    #[arg(short, long, help = "Remote address to forward to")]
-    pub target: SocketAddr,
+    #[arg(
+        short,
+        long,
+        help = "Remote address to forward to (<ip>:<port> or <host>:<port>)"
+    )]
+    pub target: ProxyTarget,
 
     #[arg(short, long, default_value = "tcp", help = "Protocol to use")]
     pub protocol: ProxyProtocol,

@@ -39,7 +39,7 @@ struct Cli {
 enum Commands {
     #[command(about = "Forward a resource")]
     Forward(forward::ForwardCommandArguments),
-    #[command(about = "Proxy an internal ip address")]
+    #[command(about = "Proxy an internal ip address or hostname")]
     Proxy(proxy::ProxyCommandArguments),
     #[command(about = "List configured aliases and groups")]
     List,
